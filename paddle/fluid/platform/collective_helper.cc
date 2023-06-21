@@ -343,6 +343,55 @@ BKCLComm* BKCLCommContext::CreateComm(
   return comm_wrapper;
 }
 
+void BKCLCommContext::CreateBKCLCommMultiTrainer(
+    const std::vector<int>& dev_ids,
+    BKCLUniqueId* bkcl_id,
+    int ntrainers,
+    int train_id,
+    int ring_id) {
+  PADDLE_ENFORCE_GT(
+      dev_ids.size(),
+      0,
+      paddle::platform::errors::InvalidArgument(
+          "dev ids = [%d], it should greater than 0.", dev_ids.size()));
+  const int kDevices = dev_ids.size();
+  VLOG(1) << "Begin CreateBKCLCommMultiTrainer. device number: " << kDevices
+          << ", ntrainers: " << ntrainers << ", train_id: " << train_id
+          << ", rind_id: " << ring_id;
+  BKCLContext_t comms[kDevices];
+  {
+    PADDLE_ENFORCE_XPU_SUCCESS(bkcl_group_start());
+    for (int i = 0; i < kDevices; i++) {
+      platform::SetXPUDeviceId(i);
+      PADDLE_ENFORCE_XPU_SUCCESS(bkcl_init_rank(
+          comms + i, train_id * kDevices + i, kDevices * ntrainers, bkcl_id));
+      VLOG(1) << "bkclCommInitRank: " << i;
+    }
+    PADDLE_ENFORCE_XPU_SUCCESS(bkcl_group_end());
+    VLOG(1) << "bkcl group end seccessss";
+  }
+  PADDLE_ENFORCE_EQ(comm_map_.count(ring_id),
+                    0,
+                    platform::errors::InvalidArgument(
+                        "comm_map_ of ring_id: %s should be 0. %s is provided",
+                        ring_id,
+                        comm_map_.count(ring_id)));
+  for (int i = 0; i < kDevices; ++i) {
+    AssignBKCLComm(comms[i],
+                   kDevices * ntrainers,
+                   train_id * kDevices + i,
+                   dev_ids[i],
+                   ring_id);
+    VLOG(1) << "bkcl communicator of train_id " << train_id * kDevices + i
+            << " in ring " << ring_id << " has been created on device "
+            << dev_ids[i];
+  }
+
+  std::call_once(once_flag_, []() {
+    std::atexit([]() { BKCLCommContext::Instance().ReleaseBKCLComms(); });
+  });
+}
+
 BKCLComm* BKCLCommContext::AssignBKCLComm(
     BKCLContext_t comm, int nranks, int rank, int dev_id, int ring_id) {
   std::unique_ptr<XPUDeviceContext> dev_ctx(

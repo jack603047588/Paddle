@@ -2227,11 +2227,12 @@ void PadBoxSlotDataset::PreLoadIntoMemory() {
     VLOG(3) << "RegisterClientToClientMsgHandler done";
   }
 
-  read_ins_ref_ = thread_num_;
+  int read_thread_num = thread_num_;
   if (disable_random_update_) {
-    read_ins_ref_ = 1;
+    read_thread_num = 1;
   }
-  for (int64_t i = 0; i < read_ins_ref_; ++i) {
+  read_ins_ref_ = read_thread_num;
+  for (int64_t i = 0; i < read_thread_num; ++i) {
     wait_futures_.emplace_back(thread_pool_->Run([this, i]() {
       platform::Timer timer;
       timer.Start();

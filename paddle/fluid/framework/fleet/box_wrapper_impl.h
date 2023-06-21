@@ -289,6 +289,9 @@ void BoxWrapper::PullSparseCaseXPU(const paddle::platform::Place& place,
 #ifdef PADDLE_WITH_XPU_KP
   auto dev_ctx = platform::DeviceContextPool::Instance().Get(place);
   auto ctx_xpu = static_cast<platform::XPUDeviceContext*>(dev_ctx)->x_context();
+  static bool use_l3_tensor = std::getenv("XPU_PADDLE_L3_TENSOR")!=NULL ?
+                    (std::strcmp(std::getenv("XPU_PADDLE_L3_TENSOR"), "1") == 0 ? true:false) :
+                    false;
   phi::Place l3_place =
    static_cast<platform::XPUDeviceContext*>(dev_ctx)->GetL3Place();
   int device_id = place.GetDeviceId();
@@ -312,10 +315,14 @@ void BoxWrapper::PullSparseCaseXPU(const paddle::platform::Place& place,
   TRACE_SCOPE_START("copy keys", xpu_wait(ctx_xpu->xpu_stream));
   VLOG(3) << "Begin copy keys, key_num[" << total_length << "]";
   LoDTensor& total_keys_tensor = dev.keys_tensor;
-  uint32_t* total_keys = reinterpret_cast<uint32_t*>(
-     total_keys_tensor.mutable_data<int32_t>({total_length, 1}, l3_place));
-//   uint32_t* total_keys = reinterpret_cast<uint32_t*>(
-//       total_keys_tensor.mutable_data<int32_t>({total_length, 1}, place));
+  uint32_t* total_keys;
+  if(use_l3_tensor) {
+    total_keys = reinterpret_cast<uint32_t*>(
+        total_keys_tensor.mutable_data<int32_t>({total_length, 1}, l3_place));
+  } else {
+    total_keys = reinterpret_cast<uint32_t*>(
+        total_keys_tensor.mutable_data<int32_t>({total_length, 1}, place));
+  }
   int* key2slot = nullptr;
   key2slot = reinterpret_cast<int*>(
       dev.keys2slot.mutable_data<int>({total_length, 1}, place));
@@ -563,7 +570,15 @@ void BoxWrapper::PushSparseGradCaseXPU(const paddle::platform::Place& place,
   TRACE_SCOPE_END("CopyForPush's xpu::copy", xpu_wait(ctx_xpu->xpu_stream));
 
   TRACE_SCOPE_START("CopyForPush", xpu_wait(ctx_xpu->xpu_stream));
-  box_wrapper_kernel_->CopyForPush(place, const_cast<float*>(grad_values[0]), total_grad_values_xpu,
+
+  float* real_grad_values;
+  for (int i = 0; i < slot_num; i++) {
+    if(grad_values[i] != nullptr) {
+      real_grad_values = const_cast<float*>(grad_values[i]);
+      break;
+    }
+  }
+  box_wrapper_kernel_->CopyForPush(place, real_grad_values, total_grad_values_xpu,
       push_offset, total_length, slot_vector, slot_lens, slot_num,
       hidden_size, batch_size, total_dims, skip_offset, key2slot);
 

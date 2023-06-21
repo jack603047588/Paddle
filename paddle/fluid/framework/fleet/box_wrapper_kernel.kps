@@ -233,11 +233,19 @@ inline void FeaturePullCopy(const paddle::platform::Place& place,
                sizeof(TEmbedxOp));
 
   TRACE_SCOPE_START("PullCopy", xpu_wait(stream));
+
+  float* real_dst_vals;
+  for (int i = 0; i < slot_num; i++) {
+    if(xpu_values[i] != nullptr) {
+      real_dst_vals = xpu_values[i];
+      break;
+    }
+  }
   PullCopy<TEmbedxOp><<<8, 64, stream>>>(d_op,
                                 scale,
                                 info,
                                 total_dims,
-                                xpu_values[0],
+                                real_dst_vals,
                                 total_values_xpu,
                                 xpu_restore_idx,
                                 total_length,

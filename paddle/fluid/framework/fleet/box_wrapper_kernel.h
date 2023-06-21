@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 #pragma once
 
-#ifdef PADDLE_WITH_XPU_KP
+// #ifdef PADDLE_WITH_XPU_KP
+#if (defined PADDLE_WITH_XPU_KP) && (defined PADDLE_WITH_BOX_PS)
 #include <boxps_public.h>
 #include "paddle/fluid/platform/place.h"
 

@@ -20,6 +20,14 @@ limitations under the License. */
 #endif
 #include <string>
 
+// The producer side.
+#include <scalopus_tracing/tracing.h>
+#include <scalopus_transport/transport_loopback.h>
+// The catapult recorder side.
+#include <scalopus_catapult/catapult_recorder.h>
+#include <scalopus_general/endpoint_manager_poll.h>
+#include <scalopus_general/general_provider.h>
+#include <scalopus_tracing/native_trace_provider.h>
 namespace paddle {
 namespace operators {
 
@@ -82,7 +90,10 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
       out[i]->set_lod(y_lod);
     }
     //TODO:r480 l3 have some thing wrong
-    // auto place = ctx.GetPlace();
+    static bool use_l3_tensor = std::getenv("XPU_PADDLE_L3_TENSOR")!=NULL ?
+                        (std::strcmp(std::getenv("XPU_PADDLE_L3_TENSOR"), "1") == 0 ? true:false) :
+                        false;
+    auto place = ctx.GetPlace();
     phi::Place l3_place = ctx.template device_context<DeviceContext>().GetL3Place();
     int w = ins[0]->numel() / x0_dims[0];
     if(use_cvm) {
@@ -103,8 +114,11 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
     unsigned int lod_index = 0;
     for (int i = 0; i < slot_num; i++) {
         cpu_x_addr_vec[i] = reinterpret_cast<const T*>(ins[i]->data<T>());
-        cpu_y_addr_vec[i] = reinterpret_cast<T*>(out[i]->mutable_data<T>(l3_place));
-        // cpu_y_addr_vec[i] = reinterpret_cast<T*>(out[i]->mutable_data<T>(place));
+        if(use_l3_tensor) {
+          cpu_y_addr_vec[i] = reinterpret_cast<T*>(out[i]->mutable_data<T>(l3_place));
+        } else {
+          cpu_y_addr_vec[i] = reinterpret_cast<T*>(out[i]->mutable_data<T>(place));
+        }
         auto x_lod = ins[i]->lod()[0];
         for (size_t j = 0; j < x_lod.size(); j++) {
            cpu_lodx[lod_index + j] = x_lod[j];

@@ -93,7 +93,8 @@ set(XPU_XCTR_URL
 set(XPU_PACK_DEPENCE_URL
     "https://baidu-kunlun-public.su.bcebos.com/paddle_depence/pack_paddle_box_depence.sh"
     CACHE STRING "" FORCE)
-if(WITH_BOX_PS)
+# if(WITH_BOX_PS)
+if (WITH_BOX_PS OR WITH_XPU_KP)
     set(XPU_XRE_DIR_NAME "xre-bdcentos_x86_64")
     set(XPU_XDNN_DIR_NAME "xdnn-bdcentos_x86_64")
     set(XPU_XCCL_DIR_NAME "xccl-bdcentos_x86_64")
@@ -105,7 +106,7 @@ if(WITH_BOX_PS)
         CACHE STRING "" FORCE)
     #"https://klx-sdk-release-public.su.bcebos.com/xdnn/release/2.6.0.1/${XPU_XDNN_DIR_NAME}.tar.gz"
     set(XPU_XDNN_URL
-        "https://klx-sdk-release-public.su.bcebos.com/xdnn_train/dev/paddlebox/20230414/${XPU_XDNN_DIR_NAME}.tar.gz"
+        "https://klx-sdk-release-public.su.bcebos.com/xdnn_train/dev/paddlebox/20230529/${XPU_XDNN_DIR_NAME}.tar.gz"
         CACHE STRING "" FORCE)
     set(SCALOPUS_URL
         "https://klx-sdk-release-public.su.bcebos.com/xdnn_train/dev/paddlebox/20230306/scalopus.tar.gz"

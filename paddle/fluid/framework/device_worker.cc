@@ -551,13 +551,14 @@ void DeviceWorker::DumpFieldBoxPS(const Scope& scope, int dump_mode,
   std::vector<framework::LoDTensor> cpu_tensors(field_num);
   std::vector<const LoD *> lods(field_num, nullptr);
 
-#ifdef PADDLE_WITH_XPU_KP
+// #ifdef PADDLE_WITH_XPU_KP
+std::set<std::string> used_slot_set;
+#if (defined PADDLE_WITH_XPU_KP) && (defined PADDLE_WITH_BOX_PS)
   auto real_reader = dynamic_cast<SlotPaddleBoxDataFeed *>(device_reader_);
   PADDLE_ENFORCE_NOT_NULL(
         real_reader, platform::errors::NotFound("In XPU only support SlotPaddleBoxDataFeed"));
   std::vector<std::string> used_slot_names;
   real_reader->GetUsedSlotIndex(nullptr, &used_slot_names);
-  std::set<std::string> used_slot_set;
   for (auto & slot : used_slot_names) {
     used_slot_set.insert(slot);
   }
@@ -598,7 +599,8 @@ void DeviceWorker::DumpFieldBoxPS(const Scope& scope, int dump_mode,
       cpu_tensors[i] = *tensor;
     }
 
-#ifdef PADDLE_WITH_XPU_KP
+// #ifdef PADDLE_WITH_XPU_KP
+#if (defined PADDLE_WITH_XPU_KP) && (defined PADDLE_WITH_BOX_PS)
     auto & fid2sign_map = paddle::framework::BoxWrapper::GetInstance()->GetFid2SginMap();
     if (used_slot_set.find(field) != used_slot_set.end()) {
       auto t_dtype = framework::TransToProtoVarType(cpu_tensors[i].dtype());

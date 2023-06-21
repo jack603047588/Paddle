@@ -184,7 +184,7 @@ macro(compile_kernel COMPILE_ARGS)
   else()
     set(ABI_VERSION "-D_GLIBCXX_USE_CXX11_ABI=1")
   endif()
-  if(WITH_BOX_PS)
+  if(WITH_BOX_PS OR ON_INFER)
     set(ABI_VERSION "-D_GLIBCXX_USE_CXX11_ABI=0")
   endif()
   add_custom_target(
