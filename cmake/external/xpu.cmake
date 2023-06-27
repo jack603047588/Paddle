@@ -21,7 +21,7 @@ endif()
 if(NOT DEFINED XPU_XDNN_BASE_URL)
   set(XPU_XDNN_BASE_URL_WITHOUT_DATE
       "https://klx-sdk-release-public.su.bcebos.com/xdnn/dev")
-  set(XPU_XDNN_BASE_URL "${XPU_XDNN_BASE_URL_WITHOUT_DATE}/20230220")
+  set(XPU_XDNN_BASE_URL "${XPU_XDNN_BASE_URL_WITHOUT_DATE}/20230613")
 else()
   set(XPU_XDNN_BASE_URL "${XPU_XDNN_BASE_URL}")
 endif()
