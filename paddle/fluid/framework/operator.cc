@@ -1669,10 +1669,17 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
                                        1,
                                        platform::EventRole::kInnerOp);
     if (need_prepare_data_) {
+
+#ifdef PADDLE_WITH_XPU_KP
       TRACE_SCOPE_START("PrepareData",);
+#endif
+
       transfer_scope = PrepareData(
           scope, *kernel_type_, &transfered_inplace_vars, runtime_ctx);
+
+#ifdef PADDLE_WITH_XPU_KP
       TRACE_SCOPE_END("PrepareData",);//wait?
+#endif
     }
   }
   // exec scope is the scope that kernel actually executed on.

@@ -29,6 +29,7 @@ limitations under the License. */
 #endif
 #include "paddle/fluid/operators/tensor_formatter.h"
 
+#if defined(PADDLE_WITH_XPU_KP)
 // The producer side.
 #include <scalopus_tracing/tracing.h>
 #include <scalopus_transport/transport_loopback.h>
@@ -37,6 +38,7 @@ limitations under the License. */
 #include <scalopus_general/endpoint_manager_poll.h>
 #include <scalopus_general/general_provider.h>
 #include <scalopus_tracing/native_trace_provider.h>
+#endif
 
 namespace paddle {
 namespace operators {
