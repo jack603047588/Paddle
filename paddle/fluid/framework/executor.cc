@@ -561,21 +561,33 @@ void Executor::RunPartialPreparedContext(ExecutorPrepareContext* ctx,
     }
   }
 
+#ifdef PADDLE_WITH_XPU_KP
   TRACE_SCOPE_START("executor ops run",);
+#endif
+
   for (int64_t i = start_op_index; i < end_op_index; ++i) {
     auto& op = ctx->ops_[i];
+
+#ifdef PADDLE_WITH_XPU_KP
     xpu_wait();
     RUNTIME_TRACE_SCOPE_START((op->Type()+" run").c_str(),);
+#endif
     op->Run(*local_scope, place_);
     if (gc) {
       platform::RecordEvent record(
           "CheckGC", platform::TracerEventType::UserDefined, 10);
       DeleteUnusedTensors(*local_scope, op.get(), ctx->unused_vars_, gc.get());
     }
+
+#ifdef PADDLE_WITH_XPU_KP
     RUNTIME_TRACE_SCOPE_END((op->Type()+" run").c_str(),);
     xpu_wait();
+#endif
   }
+
+#ifdef PADDLE_WITH_XPU_KP
   TRACE_SCOPE_END("executor ops run",);
+#endif
 
   auto callback = [scope, local_scope, keep_kids]() {
     if (local_scope != scope) {
