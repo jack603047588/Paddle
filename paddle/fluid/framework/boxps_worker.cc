@@ -695,6 +695,9 @@ void BoxPSWorker::SyncParam(void) {
   TensorScaleValue(place_, param_sync_, &param_sync_, scale);
   PADDLE_ENFORCE_GPU_SUCCESS(cudaStreamSynchronize(stream));
 #elif defined(PADDLE_WITH_XPU_BKCL) || defined(PADDLE_WITH_XPU)
+  // Other dense op use default stream, so we need wait other op calc finished before call bkcl_all_reduce.
+  xpu_wait(0);
+
   PADDLE_ENFORCE_EQ(
       bkcl_all_reduce(comm->comm(),
                       sendbuff,
