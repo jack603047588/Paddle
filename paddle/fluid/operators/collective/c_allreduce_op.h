@@ -343,6 +343,9 @@ class CAllReduceOpXPUKernel : public framework::OpKernel<T> {
             "Invalid reduce type: %d", red_type));
     }
 
+    // Other dense op use default stream, so we need wait other op calc finished before call bkcl_all_reduce.
+    xpu_wait(0);
+
     PADDLE_ENFORCE_EQ(
         bkcl_all_reduce(comm->comm(),
                         sendbuff,

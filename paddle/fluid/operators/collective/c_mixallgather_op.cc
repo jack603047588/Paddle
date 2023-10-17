@@ -413,6 +413,10 @@ class CMixAllGatherOpXPUKernel : public framework::OpKernel<T> {
                        ->x_context()
                        ->xpu_stream;
     TRACE_SCOPE_START("bkcl_all_reduce", xpu_wait(stream));
+
+    // Other dense op use default stream, so we need wait other op calc finished before call bkcl_all_reduce.
+    xpu_wait(0);
+
     PADDLE_ENFORCE_EQ(
         bkcl_all_reduce(comm->comm(),
                         recvbuff,

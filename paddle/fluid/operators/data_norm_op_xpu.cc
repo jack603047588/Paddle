@@ -27,7 +27,7 @@ template <typename DeviceContext, typename T>
 class  DataNormXPUKernel : public framework::OpKernel<T> {
  public:
   void Compute(const framework::ExecutionContext &context) const override {
-    const std::string& data_layout_str = context.Attr<std::string>("data_layout"); 
+    const std::string& data_layout_str = context.Attr<std::string>("data_layout");
     const auto data_layout = framework::StringToDataLayout(data_layout_str);
     const auto *x = context.Input<Tensor>("X");
     const auto &x_dims = x->dims();
@@ -37,12 +37,12 @@ class  DataNormXPUKernel : public framework::OpKernel<T> {
     if (enable_scale_and_shift) {
         scale_w = const_cast<float*>(context.Input<Tensor>("scale_w")->data<T>());
         bias = const_cast<float*>(context.Input<Tensor>("bias")->data<T>());
-    } 
+    }
     PADDLE_ENFORCE_EQ(x_dims.size(), 2, platform::errors::InvalidArgument(
                                             "The Input dim size should be 2"));
     const int N = x_dims[0];
-    const int C = 
-      (data_layout == phi::DataLayout::kNCHW ? x_dims[1] 
+    const int C =
+      (data_layout == phi::DataLayout::kNCHW ? x_dims[1]
                                         : x_dims[x_dims.size() - 1]);
     auto *y = context.Output<Tensor>("Y");
     auto *mean_out = context.Output<Tensor>("Means");
@@ -53,8 +53,8 @@ class  DataNormXPUKernel : public framework::OpKernel<T> {
     const auto* batch_square_sum = context.Input<Tensor>("BatchSquareSum")->data<T>();
     mean_out->mutable_data<T>(context.GetPlace());
     scales->mutable_data<T>(context.GetPlace());
-    //means_arr = b_sum_arr / b_size_arr;  
-    T *mean_data = mean_out->data<T>(); 
+    //means_arr = b_sum_arr / b_size_arr;
+    T *mean_data = mean_out->data<T>();
     T *scale_data = scales->data<T>();
     auto& dev_ctx = context.template device_context<DeviceContext>();
     //  data_norm(Context *context, const float *x, const float *batch_size,
@@ -122,6 +122,10 @@ class  DataNormGradXPUKernel : public framework::OpKernel<T> {
           auto place = ctx.GetPlace();
           auto comm = platform::BKCLCommContext::Instance().Get(0, place);
           auto stream = dev_ctx.x_context()->xpu_stream;
+
+          // Other dense op use default stream, so we need wait other op calc finished before call bkcl_all_reduce.
+          xpu_wait(0);
+
           PADDLE_ENFORCE_EQ(bkcl_all_reduce(comm->comm(), d_batch_size, d_batch_size,
                           C,  BKCL_FLOAT, BKCL_ADD, stream),
                           BKCL_SUCCESS, platform::errors::PreconditionNotMet(
