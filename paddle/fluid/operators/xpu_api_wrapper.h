@@ -380,16 +380,18 @@ static void MatMulXPUFunction(xpu::Context* xpu_ctx,
   decltype(&paddle::operators::xpu_fc_wrapper<XPUType, int16_t>)
       fc_api_list[4] = {
           &paddle::operators::xpu_fc_wrapper<XPUType, int16_t>,
-          &paddle::operators::xpu_fc_wrapper<XPUType, int32_t>,
-          &paddle::operators::xpu_fc_wrapper<XPUType, float>,
           &paddle::operators::xpu_fc_wrapper<XPUType, int_with_ll_t>,
+          // &paddle::operators::xpu_fc_wrapper<XPUType, int32_t>,
+          &paddle::operators::xpu_fc_wrapper<XPUType, float>,
+          // &paddle::operators::xpu_fc_wrapper<XPUType, int_with_ll_t>,
       };
   decltype(&paddle::operators::xpu_fc_batch_wrapper<XPUType, int16_t>)
       fc_batch_api_list[4] = {
           &paddle::operators::xpu_fc_batch_wrapper<XPUType, int16_t>,
-          &paddle::operators::xpu_fc_batch_wrapper<XPUType, int32_t>,
-          &paddle::operators::xpu_fc_batch_wrapper<XPUType, float>,
           &paddle::operators::xpu_fc_batch_wrapper<XPUType, int_with_ll_t>,
+          // &paddle::operators::xpu_fc_batch_wrapper<XPUType, int32_t>,
+          &paddle::operators::xpu_fc_batch_wrapper<XPUType, float>,
+          // &paddle::operators::xpu_fc_batch_wrapper<XPUType, int_with_ll_t>,
       };
 
   auto fc_api = fc_api_list[fccal_type];
