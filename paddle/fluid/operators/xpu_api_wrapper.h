@@ -24,6 +24,7 @@ enum XPUFCCalcType {
   FC_INT16 = 0,
   FC_INT32,
   FC_FLOAT,
+  FC_INT32_WITH_LL,
 };
 
 template <typename T>
@@ -35,6 +36,8 @@ XPUFCCalcType FCCalcType() {
     return XPUFCCalcType::FC_INT32;
   } else if (std::getenv("XPU_PADDLE_FC_LOCAL_INT16") != nullptr) {
     return XPUFCCalcType::FC_FLOAT;
+  } else if (std::getenv("XPU_PADDLE_FC_INT32_WITH_LL") != nullptr) {
+    return XPUFCCalcType::FC_INT32_WITH_LL;
   }
   return XPUFCCalcType::FC_INT16;
 }
@@ -212,7 +215,6 @@ static void xpu_fc_wrapper(xpu::Context* ctx,
     std::vector<int> axis = {1, 0};
     r = xpu::transpose<XPUType>(ctx, x, l3_addr, shape, axis);
     PADDLE_ENFORCE_XDNN_SUCCESS(r, "transpose");
-
     r = xpu::fc_fusion<XPUType, XPUType, XPUType, FCT>(ctx,
                                                        l3_addr,
                                                        w,
@@ -376,16 +378,18 @@ static void MatMulXPUFunction(xpu::Context* xpu_ctx,
   int fccal_type = FCCalcType<XPUType>();
 
   decltype(&paddle::operators::xpu_fc_wrapper<XPUType, int16_t>)
-      fc_api_list[3] = {
+      fc_api_list[4] = {
           &paddle::operators::xpu_fc_wrapper<XPUType, int16_t>,
-          &paddle::operators::xpu_fc_wrapper<XPUType, int_with_ll_t>,
+          &paddle::operators::xpu_fc_wrapper<XPUType, int32_t>,
           &paddle::operators::xpu_fc_wrapper<XPUType, float>,
+          &paddle::operators::xpu_fc_wrapper<XPUType, int_with_ll_t>,
       };
   decltype(&paddle::operators::xpu_fc_batch_wrapper<XPUType, int16_t>)
-      fc_batch_api_list[3] = {
+      fc_batch_api_list[4] = {
           &paddle::operators::xpu_fc_batch_wrapper<XPUType, int16_t>,
-          &paddle::operators::xpu_fc_batch_wrapper<XPUType, int_with_ll_t>,
+          &paddle::operators::xpu_fc_batch_wrapper<XPUType, int32_t>,
           &paddle::operators::xpu_fc_batch_wrapper<XPUType, float>,
+          &paddle::operators::xpu_fc_batch_wrapper<XPUType, int_with_ll_t>,
       };
 
   auto fc_api = fc_api_list[fccal_type];
