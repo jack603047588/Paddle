@@ -671,11 +671,15 @@ template <typename T>
 static int CheckNanInfRet(const T* value,
                         const size_t numel) {
   T sum = static_cast<T>(0.0);
+#ifndef PADDLE_WITH_XPU
+
 #if defined _OPENMP && _OPENMP >= 201307
 #pragma omp parallel for simd reduction(+ : sum)
 #elif defined _OPENMP
 #pragma omp parallel for reduction(+ : sum)
 #endif
+
+#endif // end PADDLE_WITH_XPU
   for (size_t i = 0; i < numel; ++i) {
     sum += (value[i] - value[i]);
   }
@@ -700,7 +704,7 @@ void CheckVarHasNanOrInfRet(const std::string& op_type,
   if (tensor->memory_size() == 0) {
     return;
   }
-  if (!platform::is_gpu_place(tensor->place())) {
+  if (platform::is_cpu_place(tensor->place())) {
     int64_t numel = tensor->numel();
     auto dtype = framework::TransToProtoVarType(tensor->type());
     if (dtype == proto::VarType::FP32) {
@@ -711,6 +715,28 @@ void CheckVarHasNanOrInfRet(const std::string& op_type,
       get_cpu_nan_inf_num() += CheckNanInfRet(val, numel);
     }
     return;
+  } else if (platform::is_xpu_place(tensor->place()) || platform::is_xpul3_place(tensor->place())) {
+#ifdef PADDLE_WITH_XPU
+    if (framework::TransToProtoVarType(tensor->dtype()) !=
+        proto::VarType::FP32) {
+      return;
+    }
+
+    float* cpu_data = new float[tensor->numel()];
+    memory::Copy(platform::CPUPlace(),
+                 static_cast<void*>(cpu_data),
+                 tensor->place(),
+                 static_cast<const void*>(tensor->data<float>()),
+                 tensor->numel() * sizeof(float));
+    // bool flag = false;
+    for (int64_t i = 0; i < tensor->numel(); i++) {
+      if (isnan(cpu_data[i]) || isinf(cpu_data[i])) {
+        get_cpu_nan_inf_num() ++;
+        break;
+      }
+    }
+    delete[] cpu_data;
+#endif
   }
 #if defined(PADDLE_WITH_CUDA)
   unsigned int* dnum = get_device_num_ptr(place);
