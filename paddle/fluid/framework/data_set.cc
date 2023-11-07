@@ -2114,8 +2114,11 @@ void PadBoxSlotDataset::PreLoadIntoDisk(const std::string& path,
   }
   CHECK(slot_pool_ != nullptr) << "slotrecord pool nullptr";
   read_ins_ref_ = thread_num_;
+  if (disable_shuffle_) {
+    read_ins_ref_ = 1;
+  }
   CHECK(down_pool_ != nullptr) << "down_pool nullptr";
-  for (int64_t i = 0; i < thread_num_; ++i) {
+  for (int64_t i = 0; i < read_ins_ref_; ++i) {
     wait_futures_.emplace_back(down_pool_->Run([this, i]() {
       platform::Timer timer;
       timer.Start();
@@ -2785,8 +2788,10 @@ void PadBoxSlotDataset::PrepareTrain(void) {
   // join or aucrunner mode enable pv
   if (enable_pv_merge_ && (box_ptr->Phase() & 0x01 == 1 ||
                            box_ptr->Mode() == 1)) {
-    std::shuffle(input_pv_ins_.begin(), input_pv_ins_.end(),
-                 BoxWrapper::LocalRandomEngine());
+    if (!disable_random_update_) {
+      std::shuffle(input_pv_ins_.begin(), input_pv_ins_.end(),
+                  BoxWrapper::LocalRandomEngine());
+    }
     // 分数据到各线程里面
     int batchsize = reinterpret_cast<SlotPaddleBoxDataFeed*>(readers_[0].get())
                         ->GetPvBatchSize();

@@ -418,6 +418,39 @@ class CMixAllGatherOpXPUKernel : public framework::OpKernel<T> {
     TRACE_SCOPE_START("bkcl_all_reduce", xpu_wait(stream));
 #endif
 
+
+  // static int target_id = std::getenv("HSQ_XPURT_TARGET_DEVICE")!=NULL ?
+  //                         std::stoi(std::string(std::getenv("HSQ_XPURT_TARGET_DEVICE"))) :
+  //                         0;
+  // int dev_id = place.GetDeviceId();//xpu_ctx->dev().id();
+  // if(dev_id==target_id) {
+  //   printf("[hsq] c_mixallgather_op, in_tensors.size():%d, numel:%d\n", (int)in_tensors.size(), (int)numel);
+  //   printf("[hsq] offset:[");
+  //   int64_t offset = 0;
+  //   for (size_t i = 0; i < in_tensors.size(); ++i) {
+  //     int64_t len = in_tensors[i]->numel();
+  //     printf("%d, ", (int)offset);
+  //     offset += len;
+  //   }
+  //   printf("]\n");
+
+  //   std::vector<T> h_recvbuff(numel);
+  //   xpu_memcpy(h_recvbuff.data(), recvbuff, h_recvbuff.size() * sizeof(T), XPU_DEVICE_TO_HOST);
+  //   std::cout<<"[hsq] before all_reduce recvbuff: [";
+  //   for (int i = 0; i < std::min((int)h_recvbuff.size(), 100); i++) {
+  //       std::cout<<h_recvbuff[i]<<", ";
+  //   }
+  //   std::cout<<"]"<<std::endl;
+
+  //   // std::ofstream fo;
+  //   // fo.open("h_recvbuff_"+std::to_string(dev_id)+".txt");
+  //   // fo << (int)h_recvbuff.size() << " ";
+  //   // for (int i = 0; i < (int)h_recvbuff.size(); i++) {
+  //   //     fo << h_recvbuff[i] << " ";//-1.0~1.0
+  //   // }
+  //   // fo.close();
+  // }
+  
     PADDLE_ENFORCE_EQ(
         bkcl_all_reduce(comm->comm(),
                         recvbuff,

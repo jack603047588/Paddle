@@ -56,6 +56,24 @@ class RankAttention2XPUKernel : public framework::OpKernel<T> {
         auto& dev_ctx = ctx.template device_context<DeviceContext>();
 
         T* out_data = Out->mutable_data<T>(ctx.GetPlace());
+        // if(ctx.GetPlace().GetDeviceId()==0) {
+        //     printf("[hsq] rank_attention input ptr:%p, rank_offset ptr:%p, param ptr:%p, out ptr:%p, ins_num: %d, x_fea_dim:%d, max_rank:%d, para_row:%d, para_col:%d\n", X->data<T>(), rank_offset->data<int>(), param->data<T>(), out_data, (int)ins_num, (int)x_fea_dim, (int)max_rank, (int)para_row, (int)para_col);
+
+        //     std::vector<int> h_mat(rank_offset->numel());
+        //     xpu_memcpy(h_mat.data(), rank_offset->data<int>(), rank_offset->numel() * sizeof(int), XPU_DEVICE_TO_HOST);
+
+        //     if(ins_num*(2*max_rank+1)!=rank_offset->numel()){
+        //         printf("[hsq] check error\n");
+        //     }
+        //     std::cout<<"[hsq] mat_out: [";
+        //     for (int i = 0; i < ins_num; i++) {
+        //         std::cout<<"ins_id: "<<i<<", [";
+        //         for (int j = 0; j < (2*max_rank+1); j++) {
+        //             std::cout<<h_mat[i*(2*max_rank+1)+j]<<", ";
+        //         }
+        //         std::cout<<"], "<<std::endl;
+        //     }
+
         int ret = xpu::rank_attention2<T>(dev_ctx.x_context(), ins_num, x_fea_dim, X->data<T>(),
                                           max_rank, rank_offset->data<int>(), para_row, para_col,
                                           param->data<T>(), out_data);
@@ -63,6 +81,7 @@ class RankAttention2XPUKernel : public framework::OpKernel<T> {
             ret, XPU_SUCCESS,
             platform::errors::External("The rank_attention2 XPU kernel return wrong value[%d %s]",
                                        ret, XPUAPIErrorMsg[ret]));
+        // }
     }
 };
 
