@@ -935,6 +935,7 @@ void BoxWrapper::PushSparseGradCaseXPU(const paddle::platform::Place& place,
       expand_embed_dim,
       push_float_num_,
       expand_only);
+  xpu_free(d_slot_inner_offset);
 
   if(dev_id==target_id && count==target_count) {
       std::string file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_push_copy_output.txt";

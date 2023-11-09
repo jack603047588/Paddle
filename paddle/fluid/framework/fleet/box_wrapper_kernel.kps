@@ -440,12 +440,12 @@ inline void FeaturePullCopyNNCross(
                                   skip_offset,
                                   cvm_offset,
                                   slot_num);
-    xpu_free(d_xpu_values);
   } else {
     // PullCopyNNCrossWithEmb
     // TODO:
     ;
   }
+  xpu_free(d_xpu_values);
   xpu_wait(stream);
 #ifdef TRACE_PROFILE
   TRACE_SCOPE_END("PullCopyNNCross", );
