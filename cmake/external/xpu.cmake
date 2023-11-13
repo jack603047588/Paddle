@@ -97,12 +97,12 @@ set(XPU_PACK_DEPENCE_URL
 if (WITH_BOX_PS OR WITH_XPU_KP)
     set(XPU_XRE_DIR_NAME "xre-bdcentos_x86_64")
     set(XPU_XDNN_DIR_NAME "xdnn-bdcentos_x86_64")
-    set(XPU_XCCL_DIR_NAME "xccl_socket-bdcentos_x86_64")
+    set(XPU_XCCL_DIR_NAME "xccl_rdma-bdcentos_x86_64")
     set(XPU_XRE_URL
         "https://klx-sdk-release-public.su.bcebos.com/xre/release/4.0.28.1/${XPU_XRE_DIR_NAME}.tar.gz"
         CACHE STRING "" FORCE)
     set(XPU_XCCL_URL
-        "https://klx-sdk-release-public.su.bcebos.com/xccl/release/1.0.62.1/${XPU_XCCL_DIR_NAME}.tar.gz"
+        "https://klx-sdk-release-public.su.bcebos.com/xccl/release/1.1.6.1/${XPU_XCCL_DIR_NAME}.tar.gz"
         CACHE STRING "" FORCE)
     #"https://klx-sdk-release-public.su.bcebos.com/xdnn/release/2.6.0.1/${XPU_XDNN_DIR_NAME}.tar.gz"
     set(XPU_XDNN_URL
