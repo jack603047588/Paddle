@@ -3609,6 +3609,18 @@ void SlotPaddleBoxDataFeed::GetRankOffsetGPU(const int pv_num,
                  value.d_ad_offset.data<int>(), col);
 
 #elif defined(PADDLE_WITH_XPU_KP)
+  auto dev_ctx = platform::DeviceContextPool::Instance().Get(this->place_);
+  auto ctx = static_cast<platform::XPUDeviceContext*>(dev_ctx)->x_context();
+  int r = xpu::constant<int>(ctx, tensor_ptr, rank_offset_->numel(), 0);
+  PADDLE_ENFORCE_EQ(r,
+                    XPU_SUCCESS,
+                    platform::errors::External(
+                        "XPU constant kernel return wrong value[%d %s]",
+                        r,
+                        XPUAPIErrorMsg[r]));
+  // DataFeedPdboxXpuKernelHelper::CopyRankOffset(this->place_, tensor_ptr, ins_num, pv_num, max_rank,
+  //                                              value.d_rank.data<int>(), value.d_cmatch.data<int>(),
+  //                                               value.d_ad_offset.data<int>(), col);
   DataFeedPdboxXpuKernelHelper::CopyRankOffset(this->place_, tensor_ptr, ins_num, pv_num, max_rank,
                                                value.d_rank.data<int>(), value.d_cmatch.data<int>(),
                                                value.d_ad_offset.data<int>(), col);

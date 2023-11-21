@@ -376,7 +376,8 @@ void DataFeedPdboxXpuKernelHelper::CopyRankOffset(const paddle::platform::Place&
     stream = static_cast<platform::XPUDeviceContext*>(dev_ctx)
                 ->x_context()
                 ->xpu_stream;
-    CopyRankOffsetKernel<<<4, 64, stream>>>(dest, ranks, cmatchs, ad_offsets, ins_num, pv_num, max_rank, cols);
+    // CopyRankOffsetKernel<<<4, 64, stream>>>(dest, ranks, cmatchs, ad_offsets, ins_num, pv_num, max_rank, cols);
+    CopyRankOffsetKernel<<<8, 64, stream>>>(dest, ranks, cmatchs, ad_offsets, pv_num, ins_num, max_rank, cols);
     xpu_wait(stream);
 }
 

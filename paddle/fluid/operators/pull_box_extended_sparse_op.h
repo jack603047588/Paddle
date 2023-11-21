@@ -33,6 +33,74 @@ static void PullBoxExtendedSparseFunctor(
   const auto slot_size = inputs.size();
   std::vector<const uint64_t*> all_keys(slot_size);
 
+   // ======= expand adapt =======
+  int total_dims0 = 0;
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    total_dims0 += outputs[i]->dims()[0];
+  }
+  int total_expand_dims0 = 0;
+  for (size_t i = 0; i < outputs_extend.size(); ++i) {
+    total_expand_dims0 += outputs_extend[i]->dims()[0];
+  }
+
+  int max_total_dims0 = total_dims0;
+  bool is_expand_slot_small = true;
+  if(total_dims0>total_expand_dims0) {
+    is_expand_slot_small = true;
+    max_total_dims0 = total_dims0;
+  } else {
+    is_expand_slot_small = false;
+    max_total_dims0 = total_expand_dims0;
+  }
+
+  std::vector<int> slot_dims0_offset(slot_size);
+  int offset = 0;
+  int dims1 = 0;
+  int expand_dims1 = 0;
+
+  size_t embedx_offset = 0;
+  size_t expand_offset = 0;
+  for (int i = 0; i < (int)slot_size; i++) {
+    slot_dims0_offset[i] = offset;
+    if(flags.empty()) {
+      offset += outputs[i]->dims()[0];
+      dims1 = outputs[i]->dims()[1];
+      expand_dims1 = outputs_extend[i]->dims()[1];
+    } else {
+      if(is_expand_slot_small == true){
+        if (flags[i] & 0x01) {
+          offset += outputs[embedx_offset]->dims()[0];
+          
+          dims1 = outputs[embedx_offset]->dims()[1];
+          embedx_offset++;
+        } else {
+          offset += 0;
+        }
+        if(flags[i] & 0x02) {
+          expand_dims1 = outputs_extend[expand_offset]->dims()[1];
+          expand_offset++;
+        }
+      } else {
+        if (flags[i] & 0x02) {
+          offset += outputs_extend[expand_offset]->dims()[0];
+          expand_dims1 = outputs_extend[expand_offset]->dims()[1];
+          expand_offset++;
+        } else {
+          offset += 0;
+        }
+        if(flags[i] & 0x01) {
+          dims1 = outputs[embedx_offset]->dims()[1];
+          embedx_offset++;
+        }
+      }
+    }
+  }
+
+  framework::LoDTensor total_values;
+  total_values.Resize(phi::make_ddim({max_total_dims0 * (dims1 + expand_dims1)}));
+  total_values.mutable_data<T>(ctx.GetPlace());
+  // ======= expand adapt =======
+
   // BoxPS only supports float now
   std::vector<float*> all_values(slot_size * 2);
   std::vector<int64_t> slot_lengths(slot_size);
@@ -43,8 +111,18 @@ static void PullBoxExtendedSparseFunctor(
           reinterpret_cast<const uint64_t*>(slot->data<int64_t>());
       all_keys[i] = single_slot_keys;
       slot_lengths[i] = slot->numel();
+      // ==== expand adapt ====
+      int offset = slot_dims0_offset[i] * dims1 * sizeof(T);
+      total_values.set_offset(offset);
+      outputs[i]->ShareBufferWith(total_values);
+      // === expand adapt ===
       auto *output = outputs[i]->mutable_data<T>(ctx.GetPlace());
       all_values[i] = reinterpret_cast<float*>(output);
+      // === expand adapt === 
+      offset = slot_dims0_offset[i] * expand_dims1 * sizeof(T);
+      total_values.set_offset(max_total_dims0 * dims1 * sizeof(T) + offset);
+      outputs_extend[i]->ShareBufferWith(total_values);
+      // === expand adapt === 
       auto *output_extend = outputs_extend[i]->mutable_data<T>(ctx.GetPlace());
       all_values[i + slot_size] = reinterpret_cast<float*>(output_extend);
     }
@@ -58,6 +136,12 @@ static void PullBoxExtendedSparseFunctor(
       all_keys[i] = single_slot_keys;
       slot_lengths[i] = slot->numel();
       if (flags[i] & 0x01) {
+        // === expand adapt ===
+        int offset = slot_dims0_offset[i] * dims1 * sizeof(T);
+        total_values.set_offset(offset);
+        outputs[embedx_offset]->ShareBufferWith(total_values);
+        // === expand adapt ===
+        
         auto *output = outputs[embedx_offset]->mutable_data<T>(ctx.GetPlace());
         all_values[i] = reinterpret_cast<float*>(output);
         ++embedx_offset;
@@ -65,6 +149,11 @@ static void PullBoxExtendedSparseFunctor(
         all_values[i] = 0;
       }
       if (flags[i] & 0x02) {
+        // === expand adapt === 
+        int offset = slot_dims0_offset[i] * expand_dims1 * sizeof(T);
+        total_values.set_offset(max_total_dims0 * dims1 * sizeof(T) + offset);
+        outputs_extend[expand_offset]->ShareBufferWith(total_values);
+        // === expand adapt === 
         auto *output_extend = outputs_extend[expand_offset]->mutable_data<T>(ctx.GetPlace());
         all_values[i + slot_size] = reinterpret_cast<float*>(output_extend);
         ++expand_offset;
@@ -73,14 +162,15 @@ static void PullBoxExtendedSparseFunctor(
       }
     }
   }
+  total_values.set_offset(0);
 #ifdef PADDLE_WITH_BOX_PS
-  // int skip_offset = ctx.Attr<int>("offset");
-  // auto emb_size = ctx.Attr<int>("emb_size");
-  // auto emb_extended_size = ctx.Attr<int>("emb_extended_size");
-  // auto expand_only = ctx.Attr<bool>("expand_only");  
-  // auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
-  // box_ptr->PullSparse(ctx.GetPlace(), all_keys, all_values, slot_lengths,
-  //                     emb_size, emb_extended_size, skip_offset, expand_only);
+  int skip_offset = ctx.Attr<int>("offset");
+  auto emb_size = ctx.Attr<int>("emb_size");
+  auto emb_extended_size = ctx.Attr<int>("emb_extended_size");
+  auto expand_only = ctx.Attr<bool>("expand_only");  
+  auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
+  box_ptr->PullSparse(ctx.GetPlace(), all_keys, all_values, slot_lengths,
+                      emb_size, emb_extended_size, skip_offset, expand_only);
 #endif
 }
 
@@ -161,14 +251,14 @@ static void PushBoxExtendedSparseFunctor(
     }
   }
 #ifdef PADDLE_WITH_BOX_PS
-  // int skip_offset = ctx.Attr<int>("offset");
-  // auto emb_size = ctx.Attr<int>("emb_size");
-  // auto emb_extended_size = ctx.Attr<int>("emb_extended_size");
-  // auto expand_only = ctx.Attr<bool>("expand_only");
-  // auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
-  // box_ptr->PushSparseGrad(ctx.GetPlace(), all_keys, all_grad_values,
-  //                         slot_lengths, emb_size, emb_extended_size, batch_size,
-  //                         skip_offset, expand_only);
+  int skip_offset = ctx.Attr<int>("offset");
+  auto emb_size = ctx.Attr<int>("emb_size");
+  auto emb_extended_size = ctx.Attr<int>("emb_extended_size");
+  auto expand_only = ctx.Attr<bool>("expand_only");
+  auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
+  box_ptr->PushSparseGrad(ctx.GetPlace(), all_keys, all_grad_values,
+                          slot_lengths, emb_size, emb_extended_size, batch_size,
+                          skip_offset, expand_only);
 #endif
 }
 
