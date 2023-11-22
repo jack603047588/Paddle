@@ -740,14 +740,18 @@ void BoxWrapper::PushSparseGradCaseXPU(const paddle::platform::Place& place,
 //   }
   std::vector<int> slot_inner_offset(total_length);
   int out_count = 0;
-  for(int i=0;i<slot_num;i++) {
-      for(int j=0;j<slot_lengths[i];j++) {
-          slot_inner_offset[out_count++] = j;
-      }
+  for (int i = 0; i < slot_num; i++) {
+    for (int64_t j = 0; j < slot_lengths[i]; j++) {
+      slot_inner_offset[out_count++] = j;
+    }
   }
-  void *d_slot_inner_offset = nullptr;
-  xpu_malloc((void **)&d_slot_inner_offset, total_length * sizeof(int));
-  xpu_memcpy(d_slot_inner_offset, slot_inner_offset.data(), total_length * sizeof(int), XPU_HOST_TO_DEVICE);
+  auto d_slot_inner_offset_tmp = memory::Alloc(place, total_length * sizeof(int));
+  int* d_slot_inner_offset = reinterpret_cast<int*>(d_slot_inner_offset_tmp->ptr());
+  memory::Copy(place,
+               d_slot_inner_offset,
+               platform::CPUPlace(),
+               slot_inner_offset.data(),
+               total_length * sizeof(int));
 
   box_wrapper_kernel_->CopyForPush(place, xpu_values, total_grad_values_xpu,
       push_offset, total_length, slot_vector, (int*)d_slot_inner_offset, slot_lens, slot_num,
@@ -755,7 +759,6 @@ void BoxWrapper::PushSparseGradCaseXPU(const paddle::platform::Place& place,
       expand_embed_dim,
       push_float_num_,
       expand_only);
-  xpu_free(d_slot_inner_offset);
 
   push_boxps_timer.Resume();
 #ifdef TRACE_PROFILE

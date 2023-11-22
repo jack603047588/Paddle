@@ -65,7 +65,7 @@ static void PullBoxExtendedSparseFunctor(
     if(flags.empty()) {
       offset += outputs[i]->dims()[0];
     } else {
-      if(is_expand_slot_small==true){
+      if(is_expand_slot_small){
         if (flags[i] & 0x01) {
           offset += outputs[embedx_offset]->dims()[0];
           dims1 = outputs[embedx_offset]->dims()[1];
@@ -94,7 +94,7 @@ static void PullBoxExtendedSparseFunctor(
   }
 
   framework::LoDTensor total_values;
-  total_values.Resize(phi::make_ddim({max_total_dims0*(dims1+expand_dims1)}));
+  total_values.Resize(phi::make_ddim({max_total_dims0 * (dims1 + expand_dims1)}));
   total_values.mutable_data<T>(ctx.GetPlace());
 
   // BoxPS only supports float now
@@ -107,10 +107,10 @@ static void PullBoxExtendedSparseFunctor(
           reinterpret_cast<const uint64_t*>(slot->data<int64_t>());
       all_keys[i] = single_slot_keys;
       slot_lengths[i] = slot->numel();
-      if(outputs[embedx_offset]->numel()==0) {
+      if (outputs[embedx_offset]->numel() == 0) {
         outputs[embedx_offset]->set_layout(paddle::framework::DataLayout::UNDEFINED);
       } else {
-        int offset = slot_dims0_offset[i]*dims1* sizeof(T);
+        size_t offset = slot_dims0_offset[i] * dims1 * sizeof(T);
         total_values.set_offset(offset);
         outputs[i]->ShareBufferWith(total_values);
       }
@@ -119,8 +119,8 @@ static void PullBoxExtendedSparseFunctor(
       if(outputs_extend[expand_offset]->numel()==0) {
         outputs_extend[expand_offset]->set_layout(paddle::framework::DataLayout::UNDEFINED);
       } else {
-        int offset = slot_dims0_offset[i]*expand_dims1* sizeof(T);
-        total_values.set_offset(max_total_dims0*dims1* sizeof(T)+offset);
+        size_t offset = slot_dims0_offset[i] * expand_dims1 * sizeof(T);
+        total_values.set_offset(max_total_dims0 * dims1 * sizeof(T) + offset);
         outputs_extend[i]->ShareBufferWith(total_values);
       }
       auto *output_extend = outputs_extend[i]->mutable_data<T>(ctx.GetPlace());
@@ -136,10 +136,10 @@ static void PullBoxExtendedSparseFunctor(
       all_keys[i] = single_slot_keys;
       slot_lengths[i] = slot->numel();
       if (flags[i] & 0x01) {
-        if(outputs[embedx_offset]->numel()==0) {
+        if (outputs[embedx_offset]->numel() == 0) {
           outputs[embedx_offset]->set_layout(paddle::framework::DataLayout::UNDEFINED);
         } else {
-          int offset = slot_dims0_offset[i]*dims1* sizeof(T);
+          size_t offset = slot_dims0_offset[i] * dims1 * sizeof(T);
           total_values.set_offset(offset);
           outputs[embedx_offset]->ShareBufferWith(total_values);
         }
@@ -153,8 +153,8 @@ static void PullBoxExtendedSparseFunctor(
         if(outputs_extend[expand_offset]->numel()==0) {
           outputs_extend[expand_offset]->set_layout(paddle::framework::DataLayout::UNDEFINED);
         } else {
-          int offset = slot_dims0_offset[i]*expand_dims1* sizeof(T);
-          total_values.set_offset(max_total_dims0*dims1* sizeof(T)+offset);
+          size_t offset = slot_dims0_offset[i] * expand_dims1 * sizeof(T);
+          total_values.set_offset(max_total_dims0 * dims1 * sizeof(T) + offset);
           outputs_extend[expand_offset]->ShareBufferWith(total_values);
         }
         auto *output_extend = outputs_extend[expand_offset]->mutable_data<T>(ctx.GetPlace());
