@@ -1092,7 +1092,6 @@ void AnalysisPredictor::PrepareArgument() {
     argument_.SetDlnneMinSubgraphSize(config_.dlnne_min_subgraph_size_);
   }
 
-  argument_.SetXpuPrecision(config_.xpu_precision_);
   if (config_.lite_engine_enabled()) {
     argument_.SetCpuMathLibraryNumThreads(
         config_.cpu_math_library_num_threads());

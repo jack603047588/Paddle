@@ -600,14 +600,6 @@ void BoxPSWorker::CreateDeviceResource(const ProgramDesc& main_prog) {
           var_num += 1;
         }
       }
-      // printf("[hsq] name: %s in  BoxPSWorker::CreateDeviceResource\n", name.c_str());
-      // printf("[hsq] sync_mode_:%d, dense_table_:%p\n", sync_mode_, dense_table_);
-      // printf("[hsq] root_tensor.numel(): %d\n", (int)root_tensor.numel());
-      // const void* p = root_tensor.data();
-      // printf("[hsq] root_tensor.data(): %p\n",p);
-      // std::cout<<"[hsq] place_: "<<place_<<std::endl;
-      // const void* p1 = gpu_tensor->data();
-      // printf("[hsq] gpu_tensor->data(): %p\n",p1);
       if (!gpu_tensor->initialized() && place_ == root_tensor.place()) {
         auto dim = root_tensor.dims();
         gpu_tensor->ShareDataWith(root_tensor).Resize(dim);

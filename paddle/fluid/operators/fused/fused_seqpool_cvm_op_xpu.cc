@@ -113,17 +113,6 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
                   paddle::platform::errors::InvalidArgument(
                       "The output of dims[1] should be dividable of (w-2)"));
     }
-    // int w = ins[0]->numel() / x0_dims[0];
-    // if(use_cvm) {
-    //   PADDLE_ENFORCE_EQ(y_dims[1] % w, 0,
-    //                     paddle::platform::errors::InvalidArgument(
-    //                         "The output of dims[1] should be dividable of w"));
-    // }
-    // else{
-    //   PADDLE_ENFORCE_EQ(y_dims[1] % (w-2), 0,
-    //               paddle::platform::errors::InvalidArgument(
-    //                   "The output of dims[1] should be dividable of (w-2)"));
-    // }
 
     std::vector<const T*> cpu_x_addr_vec(slot_num, 0);
     std::vector<T*> cpu_y_addr_vec(slot_num, 0);
@@ -221,7 +210,6 @@ class FusedSeqpoolCVMGradOpXPUKernel : public framework::OpKernel<T> {
           total_values.set_offset(offset);
           dx->ShareBufferWith(total_values);
           offset += dx->numel() * sizeof(T);
-          // printf("[hsq] xs[%d]!=UNDEFINED\n", k);
         }
         T* dx_data = dx->mutable_data<T>(place);
         // T* dx_data = dx->mutable_data<T>(place);

@@ -94,6 +94,7 @@ __global__ void CopyRankOffsetKernel(int* mat,
                     }
                 }
             }
+            mfence();
             LM2GM(lm_mat, mat + lm_pv_offset[pv_offset_left_index] * col, ad_num * col * sizeof(int));
             pv_offset_left_index = pv_offset_right_index;
         }

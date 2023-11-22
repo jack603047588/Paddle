@@ -3596,7 +3596,6 @@ int SlotPaddleBoxDataFeed::GetCurrentPhase() {
   }
 }
 
-#include <fstream>
 void SlotPaddleBoxDataFeed::GetRankOffsetGPU(const int pv_num,
                                              const int ins_num) {
 #if defined(PADDLE_WITH_CUDA) && defined(_LINUX) || defined(PADDLE_WITH_XPU_KP) && !defined(CPU_DATA_FEED)
@@ -3611,166 +3610,6 @@ void SlotPaddleBoxDataFeed::GetRankOffsetGPU(const int pv_num,
                  value.d_ad_offset.data<int>(), col);
 
 #elif defined(PADDLE_WITH_XPU_KP)
-  // if(this->place_.GetDeviceId()==0)
-  // {
-  //   std::vector<int> h_mat(rank_offset_->numel());
-  //   std::vector<int> h_rank(value.d_rank.numel());
-  //   std::vector<int> h_cmatch(value.d_cmatch.numel());
-  //   std::vector<int> h_ad_offset(value.d_ad_offset.numel());
-  //   xpu_memcpy(h_mat.data(), tensor_ptr, rank_offset_->numel() * sizeof(int), XPU_DEVICE_TO_HOST);
-  //   xpu_memcpy(h_rank.data(), value.d_rank.data<int>(), value.d_rank.numel() * sizeof(int), XPU_DEVICE_TO_HOST);
-  //   xpu_memcpy(h_cmatch.data(), value.d_cmatch.data<int>(), value.d_cmatch.numel() * sizeof(int), XPU_DEVICE_TO_HOST);
-  //   xpu_memcpy(h_ad_offset.data(), value.d_ad_offset.data<int>(), value.d_ad_offset.numel() * sizeof(int), XPU_DEVICE_TO_HOST);
-
-  //   printf("[hsq] ins_num:%d, pv_num:%d, max_rank:%d, col:%d\n", ins_num, pv_num, max_rank, col);
-
-    // std::cout<<"[hsq] h_ad_offset: [";
-    // for (int i = 0; i < (int)h_ad_offset.size(); i++) {
-    //     std::cout<<h_ad_offset[i]<<", ";
-    // }
-    // std::cout<<"]"<<std::endl;
-
-  //   int id = this->place_.GetDeviceId();
-  //   std::ofstream fo;
-  //   fo.open("h_num_"+std::to_string(id)+".txt");
-  //   fo << ins_num << " " << pv_num << " " << max_rank << " " << col << " ";
-  //   fo.close();
-
-  //   fo.open("h_mat_"+std::to_string(id)+".txt");
-  //   fo << (int)h_mat.size() << " ";
-  //   for (int i = 0; i < (int)h_mat.size(); i++) {
-  //       fo << h_mat[i] << " ";//-1.0~1.0
-  //   }
-  //   fo.close();
-
-  //   fo.open("h_rank_"+std::to_string(id)+".txt");
-  //   fo << (int)h_rank.size() << " ";
-  //   for (int i = 0; i < (int)h_rank.size(); i++) {
-  //       fo << h_rank[i] << " ";//-1.0~1.0
-  //   }
-  //   fo.close();
-
-  //   fo.open("h_cmatch_"+std::to_string(id)+".txt");
-  //   fo << (int)h_cmatch.size() << " ";
-  //   for (int i = 0; i < (int)h_cmatch.size(); i++) {
-  //       fo << h_cmatch[i] << " ";//-1.0~1.0
-  //   }
-  //   fo.close();
-
-  //   fo.open("h_ad_offset_"+std::to_string(id)+".txt");
-  //   fo << (int)h_ad_offset.size() << " ";
-  //   for (int i = 0; i < (int)h_ad_offset.size(); i++) {
-  //       fo << h_ad_offset[i] << " ";//-1.0~1.0
-  //   }
-  //   fo.close();
-  // }
-
-//   if(this->place_.GetDeviceId()==0) {
-//   int pv_num_2;
-//   int ins_num_2;
-//   int max_rank_2;
-//   int cols_2;
-//   std::vector<int> h_mat;
-//   std::vector<int> h_ad_rank;
-//   std::vector<int> h_cmatch;
-//   std::vector<int> h_pv_offset;
-
-//   std::ifstream fi;
-//   int size;
-
-//   std::string id = std::to_string(this->place_.GetDeviceId());
-//   fi.open("h_num_"+id+".txt");
-//   fi >> ins_num_2 >> pv_num_2 >> max_rank_2 >> cols_2;
-//   fi.close();
-//   printf("[hsq] ins_num: %d, pv_num: %d, max_rank:%d, col:%d\n", ins_num, pv_num, max_rank, col);
-//   printf("[hsq] ins_num_2: %d, pv_num_2: %d, max_rank_2:%d, cols_2:%d\n", ins_num_2, pv_num_2, max_rank_2, cols_2);
-
-//   fi.open("h_mat_"+id+".txt");
-//   fi >> size;
-//   if(size!=ins_num_2*cols_2) {
-//       printf("[hsq] error in h_mat size\n");
-//   }
-//   for (int i = 0; i < size; i++) {
-//       int val;
-//       fi >> val;
-//       h_mat.push_back(val);
-//   }
-//   fi.close();
-
-//   fi.open("h_rank_"+id+".txt");
-//   fi >> size;
-//   if(size!=ins_num_2) {
-//       printf("[hsq] error in h_ad_rank size, which %d should be %d\n", size, ins_num);
-//   }
-//   for (int i = 0; i < size; i++) {
-//       int val;
-//       fi >> val;
-//       h_ad_rank.push_back(val);
-//   }
-//   fi.close();
-
-//   fi.open("h_cmatch_"+id+".txt");
-//   fi >> size;
-//   if(size!=ins_num_2) {
-//       printf("[hsq] error in h_cmatch size\n");
-//   }
-//   for (int i = 0; i < size; i++) {
-//       int val;
-//       fi >> val;
-//       h_cmatch.push_back(val);
-//   }
-//   fi.close();
-
-//   fi.open("h_ad_offset_"+id+".txt");
-//   fi >> size;
-//   if(size!=pv_num_2+1) {
-//       printf("[hsq] error in h_pv_offset size\n");
-//   }
-//   for (int i = 0; i < size; i++) {
-//       int val;
-//       fi >> val;
-//       h_pv_offset.push_back(val);
-//   }
-//   fi.close();
-// // prepare buffer on xpu
-//   void *d_mat = nullptr;
-//   void *d_ad_rank = nullptr;
-//   void *d_cmatch = nullptr;
-//   void *d_pv_offset = nullptr;
-
-//   xpu_malloc((void **)&d_mat, h_mat.size() * sizeof(int));
-//   xpu_malloc((void **)&d_ad_rank, h_ad_rank.size() * sizeof(int));
-//   xpu_malloc((void **)&d_cmatch, h_cmatch.size() * sizeof(int));
-//   xpu_malloc((void **)&d_pv_offset, h_pv_offset.size() * sizeof(int));
-
-//   // copy input to xpu
-//   xpu_memcpy(d_mat, h_mat.data(), h_mat.size() * sizeof(int), XPUMemcpyKind::XPU_HOST_TO_DEVICE);
-//   xpu_memcpy(tensor_ptr, h_mat.data(), h_mat.size() * sizeof(int), XPUMemcpyKind::XPU_HOST_TO_DEVICE);
-//   xpu_memcpy(d_ad_rank, h_ad_rank.data(), h_ad_rank.size() * sizeof(int), XPUMemcpyKind::XPU_HOST_TO_DEVICE);
-//   xpu_memcpy(d_cmatch, h_cmatch.data(), h_cmatch.size() * sizeof(int), XPUMemcpyKind::XPU_HOST_TO_DEVICE);
-//   xpu_memcpy(d_pv_offset, h_pv_offset.data(), h_pv_offset.size() * sizeof(int), XPUMemcpyKind::XPU_HOST_TO_DEVICE);
-
-//   std::cout<<"[hsq] place: "<<this->place_<<std::endl;
-  // std::cout<<"[hsq] h_pv_offset: [";
-  // for (int i = 0; i < (int)h_pv_offset.size(); i++) {
-  //     std::cout<<h_pv_offset[i]<<", ";
-  // }
-//   std::cout<<"]"<<std::endl;
-  // DataFeedPdboxXpuKernelHelper::CopyRankOffset(this->place_, tensor_ptr, ins_num_2, pv_num_2, max_rank_2,
-  //                                              (int*)d_ad_rank, (int*)d_cmatch,
-  //                                              (int*)d_pv_offset, cols_2);
-
-//     // std::vector<int> h_mat_out(ins_num_2*cols_2);
-//     // xpu_memcpy(h_mat_out.data(), d_mat, h_mat_out.size() * sizeof(int), XPUMemcpyKind::XPU_DEVICE_TO_HOST);
-
-//     // std::cout<<"[hsq] mat_out: [";
-//     // for (int i = 0; i < ins_num_2*cols_2; i++) {
-//     //     std::cout<<h_mat_out[i]<<", ";
-//     // }
-//     // std::cout<<"]"<<std::endl;
-//   }
-//   tensor_ptr = tensor_ptr;
-  // value = value;
   auto dev_ctx = platform::DeviceContextPool::Instance().Get(this->place_);
   auto ctx = static_cast<platform::XPUDeviceContext*>(dev_ctx)->x_context();
   int r = xpu::constant<int>(ctx, tensor_ptr, rank_offset_->numel(), 0);
@@ -3783,19 +3622,6 @@ void SlotPaddleBoxDataFeed::GetRankOffsetGPU(const int pv_num,
   DataFeedPdboxXpuKernelHelper::CopyRankOffset(this->place_, tensor_ptr, ins_num, pv_num, max_rank,
                                                value.d_rank.data<int>(), value.d_cmatch.data<int>(),
                                                value.d_ad_offset.data<int>(), col);
-  // std::vector<int> h_mat_out(ins_num*col);
-  // xpu_memcpy(h_mat_out.data(), tensor_ptr, h_mat_out.size() * sizeof(int), XPUMemcpyKind::XPU_DEVICE_TO_HOST);
-
-  // if(this->place_.GetDeviceId()==0) {
-  //   std::cout<<"[hsq] mat_out: [";
-  //   for (int i = 0; i < ins_num; i++) {
-  //       for( int j = 0; j < col; j++ ) {
-  //           std::cout<<h_mat_out[i*col+j]<<", ";
-  //       }
-  //       std::cout<<std::endl;
-  //   }
-  // }
-  // printf("[hsq] end of call CopyRankOffset\n");
 #endif
 #endif
 }

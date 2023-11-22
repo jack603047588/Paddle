@@ -352,56 +352,6 @@ void BoxWrapper::PullSparseCaseCPU(const paddle::platform::Place& place,
   all_timer.Pause();
 }
 
-template <typename T>
-void hsq_dump(void* d_ptr,
-              int len,
-              std::string path,
-              bool need_print,
-              int oneline_count,
-              int print_len,
-              std::string print_name, 
-              std::string mode = "") {
-    std::vector<T> h_buf(len);
-    xpu_memcpy(h_buf.data(), d_ptr, h_buf.size() * sizeof(T), XPU_DEVICE_TO_HOST);
-
-    std::ofstream fo;
-    if(mode=="app") {
-        fo.open(path, std::ofstream::app);
-    } else {
-        fo.open(path);
-    }
-    if(oneline_count) {
-        for (int i = 0; i < (int)h_buf.size()/oneline_count; i++) {
-            for(int j=0; j<oneline_count;j++) {
-                fo << h_buf[i*oneline_count+j] << ", ";
-            }
-            fo << "\n";
-        }
-    } else {//one line
-        for (int i = 0; i < (int)h_buf.size(); i++) {
-            fo << h_buf[i] << ", ";
-        }
-    }
-    fo.close();
-    std::cout<< "[hsq] dump " <<path <<" done! src_ptr:" << d_ptr << std::endl;
-    if(need_print) {
-        std::cout<< "[hsq] " << print_name <<"(" << len <<"): [";
-        if(oneline_count) {
-            for (int i = 0; i < std::min((int)h_buf.size(), print_len)/oneline_count; i++) {
-                for(int j=0; j<oneline_count;j++) {
-                    std::cout<<h_buf[i*oneline_count+j]<<", ";
-                }
-                std::cout<<std::endl;
-            }
-        } else {//one line
-            for (int i = 0; i < std::min((int)h_buf.size(), print_len); i++) {
-                std::cout<<h_buf[i]<<", ";
-            }
-        }
-        std::cout<<"]"<<std::endl;
-    }
-}
-
 void BoxWrapper::PullSparseCaseXPU(const paddle::platform::Place& place,
                                    const std::vector<const uint64_t*>& keys,
                                    const std::vector<float*>& values,
@@ -487,14 +437,6 @@ void BoxWrapper::PullSparseCaseXPU(const paddle::platform::Place& place,
   TRACE_SCOPE_START("PullSparseXPU", xpu_wait(ctx_xpu->xpu_stream));
 #endif
   pull_boxps_timer.Start();
-  static int target_id = std::getenv("HSQ_XPURT_TARGET_DEVICE")!=NULL ?
-                          std::stoi(std::string(std::getenv("HSQ_XPURT_TARGET_DEVICE"))) :
-                          0;
-  int dev_id = place.GetDeviceId();//xpu_ctx->dev().id();
-//   if(dev_id==target_id) {
-//     printf("[hsq] dev_id:%d, 2.going to call boxps_ptr_->PullSparseXPU\n", dev_id);
-//     printf("[hsq] total_length: %d, feature_pull_size_: %d, total_bytes: %d\n", (int)total_length, (int)feature_pull_size_, (int)total_bytes);
-//   }
   boxps_ptr_->PullSparseXPU(total_keys, total_values_xpu,
       static_cast<int>(total_length), device_id);
   pull_boxps_timer.Pause();
@@ -516,9 +458,6 @@ void BoxWrapper::PullSparseCaseXPU(const paddle::platform::Place& place,
   } else {
     pull_offset = dev.pull_offset.data<boxps::FeaturePullOffset>();
   }
-//   if(dev_id==target_id) {
-//     printf("[hsq] pull_offset.expand_size: %d, pull_offset.expand: %d\n", pull_info_.expand_size, pull_info_.expand);
-//   }
 
   float** xpu_values = dev.values_ptr_tensor.mutable_data<float*>(
         static_cast<int>(values.size() * sizeof(float*)), place);
@@ -528,64 +467,10 @@ void BoxWrapper::PullSparseCaseXPU(const paddle::platform::Place& place,
 #ifdef TRACE_PROFILE
   TRACE_SCOPE_START("CopyForPull", xpu_wait(ctx_xpu->xpu_stream));
 #endif
-//   if(dev_id==target_id) {
-//     printf("[hsq] dev_id:%d, 3.going to call box_wrapper_kernel_->CopyForPull\n", dev_id);
-
-//     // std::vector<int> h_key2slot(total_length);
-//     // xpu_memcpy(h_key2slot.data(), key2slot, h_key2slot.size() * sizeof(int), XPU_DEVICE_TO_HOST);
-//     // std::cout<<"[hsq] box_wrapper_kernel_->CopyForPull's key2slot: [";
-//     // for(int i =0;i<300;i++) {
-//     //     std::cout<<h_key2slot[i]<<", ";
-//     // }
-//     // std::cout<<"...]"<<std::endl;
-
-//     for (int i = 0; i < (int)values.size(); i++) {
-//         // printf("[hsq] values[%d]: %p, slot_lengths_lod[%d]:%d\n", i, values[i], (i+1)%(slot_num+1), int(slot_lengths_lod[(i+1)%(slot_num+1)]));
-//         printf("[hsq] values[%d]: %p\n", i, values[i] );
-//     }
-//   }
   box_wrapper_kernel_->CopyForPull(place, xpu_keys, (float**)values.data(), total_values_xpu,
                       pull_offset, slot_lengths_lod.data(), slot_num, key2slot, hidden_size,
                       expand_embed_dim, total_length, total_dims, skip_offset,
                       expand_only);
-  static int target_count = std::getenv("HSQ_BOXPS_TARGET_COUNT")!=NULL ?
-                          std::stoi(std::string(std::getenv("HSQ_BOXPS_TARGET_COUNT"))) :
-                          0;
-  static int count = 0;
-  if(dev_id==target_id && count==target_count) {
-      for(int i=0;i<slot_num;i++) {
-          printf("[hsq] pull_copy values[%d]:%p, slot_lengths[%d]:%d, next_prt: %p, expand_grad_values[%d]:%p, next_prt: %p\n", i, values[i], i, (int)slot_lengths[i], values[i]+slot_lengths[i]*hidden_size, slot_num+i, values[i+slot_num], values[i+slot_num]+slot_lengths[i]*expand_embed_dim);
-      }
-
-      for(int i=0;i<slot_num;i++) {
-          if(values[i]==nullptr)
-              continue;
-          std::string file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_pull_copy_output"+std::to_string(i)+".txt";
-          hsq_dump<float>(values[i],
-                                  slot_lengths[i]*hidden_size,
-                                  file_path,
-                                  false, // need_print
-                                  hidden_size,  // oneline_count
-                                  100,
-                                  file_path);  // print_name
-      }
-
-      for(int i=slot_num;i<2*slot_num;i++) {
-          if(values[i]==nullptr)
-              continue;
-          std::string file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_pull_copy_output_expand"+std::to_string(i)+".txt";
-          hsq_dump<float>(values[i],
-                                  slot_lengths[i-slot_num]*expand_embed_dim,
-                                  file_path,
-                                  false, // need_print
-                                  expand_embed_dim,  // oneline_count
-                                  100,
-                                  file_path);  // print_name
-      }
-  }
-  if(dev_id==target_id) {
-      count ++;
-  }
 #ifdef TRACE_PROFILE
   TRACE_SCOPE_END("CopyForPull", xpu_wait(ctx_xpu->xpu_stream));
   TRACE_SCOPE_END("pull copy", xpu_wait(ctx_xpu->xpu_stream));
@@ -864,71 +749,6 @@ void BoxWrapper::PushSparseGradCaseXPU(const paddle::platform::Place& place,
   xpu_malloc((void **)&d_slot_inner_offset, total_length * sizeof(int));
   xpu_memcpy(d_slot_inner_offset, slot_inner_offset.data(), total_length * sizeof(int), XPU_HOST_TO_DEVICE);
 
-  static int target_id = std::getenv("HSQ_XPURT_TARGET_DEVICE")!=NULL ?
-                          std::stoi(std::string(std::getenv("HSQ_XPURT_TARGET_DEVICE"))) :
-                          0;
-  int dev_id = place.GetDeviceId();//xpu_ctx->dev().id();
-
-  static int target_count = std::getenv("HSQ_BOXPS_TARGET_COUNT")!=NULL ?
-                              std::stoi(std::string(std::getenv("HSQ_BOXPS_TARGET_COUNT"))) :
-                              0;
-  static int count = 18;
-  if(dev_id==target_id && count==target_count) {
-      for(int i=0;i<slot_num;i++) {
-          printf("[hsq] push_copy grad_values[%d]:%p, slot_lengths[%d]:%d, next_prt: %p, expand_grad_values[%d]:%p, next_prt: %p\n", i, grad_values[i], i, (int)slot_lengths[i], grad_values[i]+slot_lengths[i]*hidden_size, slot_num+i, grad_values[i+slot_num], grad_values[i+slot_num]+slot_lengths[i]*expand_embed_dim);
-      }
-      for(int i=0;i<slot_num;i++) {
-          if(grad_values[i]==nullptr)
-              continue;
-          std::string file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_push_copy_input"+std::to_string(i)+".txt";
-          hsq_dump<float>((void*)grad_values[i],
-                                  slot_lengths[i]*hidden_size,
-                                  file_path,
-                                  false, // need_print
-                                  hidden_size,  // oneline_count
-                                  100,
-                                  file_path);  // print_name
-      }
-
-      for(int i=slot_num;i<2*slot_num;i++) {
-          if(grad_values[i]==nullptr)
-              continue;
-          std::string file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_push_copy_input_expand"+std::to_string(i)+".txt";
-          hsq_dump<float>((void*)grad_values[i],
-                                  slot_lengths[i-slot_num]*expand_embed_dim,
-                                  file_path,
-                                  false, // need_print
-                                  expand_embed_dim,  // oneline_count
-                                  100,
-                                  file_path);  // print_name
-      }
-      std::string file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_push_copy_input_key2slot.txt";
-      hsq_dump<uint32_t>((void*)key2slot,
-                          (int)total_length,
-                          file_path,
-                          false,             // need_print
-                          expand_embed_dim,  // oneline_count
-                          100,
-                          file_path);
-      file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_push_copy_input_slot.txt";
-      hsq_dump<int>((void*)slot_vector,
-                    (int)slot_num,
-                    file_path,
-                    false,             // need_print
-                    1,  // oneline_count
-                    100,
-                    file_path);
-
-      file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_push_copy_input_slot_inner_offset.txt";
-      hsq_dump<int>((void*)d_slot_inner_offset,
-                    (int)total_length,
-                    file_path,
-                    false,             // need_print
-                    1,  // oneline_count
-                    100,
-                    file_path);
-  }
-
   box_wrapper_kernel_->CopyForPush(place, xpu_values, total_grad_values_xpu,
       push_offset, total_length, slot_vector, (int*)d_slot_inner_offset, slot_lens, slot_num,
       hidden_size, batch_size, total_dims, skip_offset, key2slot,
@@ -937,21 +757,6 @@ void BoxWrapper::PushSparseGradCaseXPU(const paddle::platform::Place& place,
       expand_only);
   xpu_free(d_slot_inner_offset);
 
-  if(dev_id==target_id && count==target_count) {
-      std::string file_path = "dev"+std::to_string(dev_id)+"_count"+std::to_string(count)+"_push_copy_output.txt";
-      hsq_dump<float>(total_grad_values_xpu,
-                              total_length*push_float_num_,
-                              file_path,
-                              false, // need_print
-                              push_float_num_,  // oneline_count
-                              100,
-                              file_path);  // print_name
-  }
-  if(dev_id==target_id) {
-      count ++;
-  }
-
-
   push_boxps_timer.Resume();
 #ifdef TRACE_PROFILE
   TRACE_SCOPE_END("CopyForPush", xpu_wait(ctx_xpu->xpu_stream));
@@ -959,14 +764,10 @@ void BoxWrapper::PushSparseGradCaseXPU(const paddle::platform::Place& place,
 
   TRACE_SCOPE_START("PushSparseXPU", xpu_wait(ctx_xpu->xpu_stream));
 #endif
-//   if(dev_id==target_id){
-//     printf("[hsq] going to call boxps_ptr_->PushSparseXPU\n");
-//   }
+
   int ret = boxps_ptr_->PushSparseXPU(total_keys,
       reinterpret_cast<void*>(total_grad_values_xpu),
       static_cast<int>(total_length), device_id);
-    // int ret = 0;
-    // total_keys = total_keys;
 
   PADDLE_ENFORCE_EQ(ret, 0, platform::errors::PreconditionNotMet(
                               "PushSparseXPU failed in BoxPS."));
