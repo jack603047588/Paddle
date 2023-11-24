@@ -30,7 +30,7 @@ limitations under the License. */
 #include "xpu/kernel/xtdk_simd.h"
 
 #ifdef TRACE_PROFILE
-#include "xpu/kernel/xtdk_io.h"
+// #include "xpu/kernel/xtdk_io.h"
 #include <fstream>
 
 // The producer side.

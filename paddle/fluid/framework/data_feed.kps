@@ -1,9 +1,8 @@
 #ifdef PADDLE_WITH_XPU_KP
 #include "paddle/fluid/framework/data_feed_xpu_kernel_helper.h"
 #include "xpu/kernel/xtdk.h"
-// #include "xpu/kernel/debug.h"
 #include "xpu/kernel/xtdk_math.h"
-#include "xpu/kernel/xtdk_io.h"
+// #include "xpu/kernel/xtdk_io.h"
 
 namespace paddle {
 namespace framework {

@@ -2113,12 +2113,13 @@ void PadBoxSlotDataset::PreLoadIntoDisk(const std::string& path,
     VLOG(3) << "RegisterClientToClientMsgHandler done";
   }
   CHECK(slot_pool_ != nullptr) << "slotrecord pool nullptr";
-  read_ins_ref_ = thread_num_;
-  if (disable_shuffle_) {
-    read_ins_ref_ = 1;
+  int read_thread_num = thread_num_;
+  if (disable_random_update_) {
+    read_thread_num = 1;
   }
+  read_ins_ref_ = read_thread_num;
   CHECK(down_pool_ != nullptr) << "down_pool nullptr";
-  for (int64_t i = 0; i < read_ins_ref_; ++i) {
+  for (int64_t i = 0; i < read_thread_num; ++i) {
     wait_futures_.emplace_back(down_pool_->Run([this, i]() {
       platform::Timer timer;
       timer.Start();
