@@ -116,7 +116,7 @@ static void PullBoxExtendedSparseFunctor(
       }
       auto *output = outputs[i]->mutable_data<T>(ctx.GetPlace());
       all_values[i] = reinterpret_cast<float*>(output);
-      if(outputs_extend[i]->numel()==0) {
+      if(outputs_extend[i]->numel() == 0) {
         outputs_extend[i]->set_layout(paddle::framework::DataLayout::UNDEFINED);
       } else {
         size_t offset = slot_dims0_offset[i] * expand_dims1 * sizeof(T);
