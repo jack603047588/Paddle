@@ -107,8 +107,8 @@ static void PullBoxExtendedSparseFunctor(
           reinterpret_cast<const uint64_t*>(slot->data<int64_t>());
       all_keys[i] = single_slot_keys;
       slot_lengths[i] = slot->numel();
-      if (outputs[embedx_offset]->numel() == 0) {
-        outputs[embedx_offset]->set_layout(paddle::framework::DataLayout::UNDEFINED);
+      if (outputs[i]->numel() == 0) {
+        outputs[i]->set_layout(paddle::framework::DataLayout::UNDEFINED);
       } else {
         size_t offset = slot_dims0_offset[i] * dims1 * sizeof(T);
         total_values.set_offset(offset);
@@ -116,8 +116,8 @@ static void PullBoxExtendedSparseFunctor(
       }
       auto *output = outputs[i]->mutable_data<T>(ctx.GetPlace());
       all_values[i] = reinterpret_cast<float*>(output);
-      if(outputs_extend[expand_offset]->numel()==0) {
-        outputs_extend[expand_offset]->set_layout(paddle::framework::DataLayout::UNDEFINED);
+      if(outputs_extend[i]->numel()==0) {
+        outputs_extend[i]->set_layout(paddle::framework::DataLayout::UNDEFINED);
       } else {
         size_t offset = slot_dims0_offset[i] * expand_dims1 * sizeof(T);
         total_values.set_offset(max_total_dims0 * dims1 * sizeof(T) + offset);
