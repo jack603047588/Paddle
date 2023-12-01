@@ -585,6 +585,10 @@ XPUOpMap& get_kl2_ops() {
        XPUKernelSet({pOpKernelType(vartype::FP32, XPUPlace())})},
       {"push_box_extended_sparse",
        XPUKernelSet({pOpKernelType(vartype::FP32, XPUPlace())})},
+      {"index_select",
+       XPUKernelSet({pOpKernelType(vartype::FP32, XPUPlace())})},
+      {"index_select_grad",
+       XPUKernelSet({pOpKernelType(vartype::FP32, XPUPlace())})},
   };
   return s_xpu2_kernels;
 }
