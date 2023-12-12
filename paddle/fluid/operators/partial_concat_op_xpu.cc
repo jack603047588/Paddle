@@ -63,7 +63,7 @@ class PartialConcatXPUKernel : public framework::OpKernel<T> {
 
         std::vector<int> xshape = phi::vectorize<int>(in_vars[i]->dims());
         std::vector<int> starts = {0, start_index};
-        std::vector<int> ends = {batch_size, start_index + partial_len + 1};//要截取的x的每个维度的终止坐标(不包含)
+        std::vector<int> ends = {batch_size, start_index + partial_len};//要截取的x的每个维度的终止坐标(不包含)
 
         int r = xpu::slice<T>(xpu_context,
                               input_data,
@@ -129,7 +129,7 @@ class PartialConcatGradXPUKernel : public framework::OpKernel<T> {
 
         std::vector<int> xshape = phi::vectorize<int>(out_grad->dims());
         std::vector<int> starts = {0, int(partial_len * i)};
-        std::vector<int> ends = {batch_size, int(partial_len * i + partial_len + 1)};//要截取的x的每个维度的终止坐标(不包含)
+        std::vector<int> ends = {batch_size, int(partial_len * i + partial_len)};//要截取的x的每个维度的终止坐标(不包含)
 
         int r = xpu::slice<T>(xpu_context,
                               out_grad_data,
