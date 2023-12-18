@@ -3612,7 +3612,7 @@ void SlotPaddleBoxDataFeed::GetRankOffsetGPU(const int pv_num,
 #elif defined(PADDLE_WITH_XPU_KP)
   auto dev_ctx = platform::DeviceContextPool::Instance().Get(this->place_);
   auto ctx = static_cast<platform::XPUDeviceContext*>(dev_ctx)->x_context();
-  int r = xpu::constant<int>(ctx, tensor_ptr, rank_offset_->numel(), 0);
+  int r = xpu::constant<int>(ctx, tensor_ptr, rank_offset_->numel(), -1);
   PADDLE_ENFORCE_EQ(r,
                     XPU_SUCCESS,
                     platform::errors::External(
