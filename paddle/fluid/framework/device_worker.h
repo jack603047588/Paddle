@@ -32,6 +32,7 @@ limitations under the License. */
 #endif
 
 #include <map>
+
 #include "paddle/fluid/framework/data_feed.h"
 #include "paddle/fluid/framework/executor_gc_helper.h"
 #include "paddle/fluid/framework/heter_util.h"
@@ -64,19 +65,19 @@ class Scope;
 namespace paddle {
 namespace framework {
 
-std::string PrintLodTensor(Tensor* tensor,
+std::string PrintLodTensor(const Tensor* tensor,
                            int64_t start,
                            int64_t end,
                            char separator = ',',
                            bool need_leading_separator = false);
-void PrintLodTensor(Tensor* tensor,
+void PrintLodTensor(const Tensor* tensor,
                     int64_t start,
                     int64_t end,
                     std::string& output_str,
                     char separator = ',',
                     bool need_leading_separator = false);
-std::pair<int64_t, int64_t> GetTensorBound(LoDTensor* tensor, int index);
-bool CheckValidOutput(LoDTensor* tensor, size_t batch_size);
+std::pair<int64_t, int64_t> GetTensorBound(const LoDTensor* tensor, int index);
+bool CheckValidOutput(const LoDTensor* tensor, size_t batch_size);
 
 class FleetWrapper;
 
@@ -227,8 +228,8 @@ class DeviceWorker {
                          int dump_interval = 10000);
   virtual void DumpParamBoxPS(const Scope& scope, const int batch_id);
   virtual void DumpFieldBoxPS(const Scope& scope,
-                           int dump_mode,
-                           int dump_interval = 10000);
+                              int dump_mode,
+                              int dump_interval = 10000);
 
   Scope* root_scope_ = nullptr;
   Scope* thread_scope_;
@@ -818,7 +819,8 @@ class BoxPSAsynDenseTable {
   void PullDense(const platform::Place& place, Tensor* tensor);
   void PushDense(const platform::Place& place, Tensor* tensor);
   void InitThreadGroup();
-  void ThreadUpdate(int thread_id, const std::vector<LoDTensor*>& grad,
+  void ThreadUpdate(int thread_id,
+                    const std::vector<LoDTensor*>& grad,
                     size_t merge_num);
   void AsyncUpdate();
   int64_t GetParamTotalLen(void) { return total_param_len_; }
@@ -902,6 +904,10 @@ class BoxPSWorker : public DeviceWorker {
   bool one_ring_ = false;
   int device_num_ = 0;
   int node_size_ = 1;
+  // skip vars
+  std::vector<std::string> skip_vars_;
+  std::unordered_map<const OperatorBase*, std::vector<std::string>>
+      unused_vars_;
 };
 #endif
 

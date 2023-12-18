@@ -489,88 +489,32 @@ void Executor::RunPartialPreparedContext(ExecutorPrepareContext* ctx,
   int64_t max_memory_size = GetEagerDeletionThreshold();
   std::unique_ptr<GarbageCollector> gc;
   if (!ctx->force_disable_gc_ && max_memory_size >= 0) {
-    if (platform::is_gpu_place(place_)) {
-#if defined(PADDLE_WITH_CUDA) || defined(PADDLE_WITH_HIP)
-      if (IsFastEagerDeletionModeEnabled()) {
-        gc.reset(new UnsafeFastGPUGarbageCollector(place_, max_memory_size));
-      } else {
-        gc.reset(new DefaultStreamGarbageCollector(place_, max_memory_size));
-      }
-#else
-      PADDLE_THROW(
-          platform::errors::Unimplemented("No GPU gc found in CPU/XPU paddle"));
-#endif
-    } else if (platform::is_cpu_place(place_)) {
-      gc.reset(new CPUGarbageCollector(place_, max_memory_size));
-    } else if (platform::is_xpu_place(place_)) {
-#ifdef PADDLE_WITH_XPU
-      gc.reset(new XPUGarbageCollector(place_, max_memory_size));
-#else
-      PADDLE_THROW(
-          platform::errors::Unimplemented("No XPU gc found in CPU/GPU paddle"));
-#endif
-    } else if (platform::is_ipu_place(place_)) {
-#ifdef PADDLE_WITH_IPU
-      gc.reset(new IPUGarbageCollector(place_, max_memory_size));
-#else
-      PADDLE_THROW(
-          platform::errors::Unimplemented("No IPU gc found in CPU/IPU paddle"));
-#endif
-    } else if (platform::is_npu_place(place_)) {
-#ifdef PADDLE_WITH_ASCEND_CL
-      if (IsFastEagerDeletionModeEnabled()) {
-        VLOG(4) << "Use unsafe fast gc for NPU.";
-        gc.reset(new NPUUnsafeFastGarbageCollector(place_, max_memory_size));
-      } else {
-        PADDLE_THROW(platform::errors::Unimplemented(
-            "Please set FLAGS_fast_eager_deletion_mode=true to use "
-            "GarbageCollector on NPU."));
-        // TODO(zhiqiu): fix bugs and enable NPUDefaultStreamGarbageCollector.
-        VLOG(4) << "Use default stream gc for NPU.";
-        gc.reset(new NPUDefaultStreamGarbageCollector(place_, max_memory_size));
-      }
-#else
-      PADDLE_THROW(
-          platform::errors::Unimplemented("No NPU gc found in CPU/NPU paddle"));
-#endif
-    } else if (platform::is_mlu_place(place_)) {
-#ifdef PADDLE_WITH_MLU
-      if (IsFastEagerDeletionModeEnabled()) {
-        gc.reset(new MLUUnsafeFastGarbageCollector(place_, max_memory_size));
-      } else {
-        gc.reset(new MLUDefaultStreamGarbageCollector(place_, max_memory_size));
-      }
-#else
-      PADDLE_THROW(
-          platform::errors::Unimplemented("No MLU gc found in CPU/MLU paddle"));
-#endif
-    } else if (platform::is_custom_place(place_)) {
-#ifdef PADDLE_WITH_CUSTOM_DEVICE
-      if (IsFastEagerDeletionModeEnabled()) {
-        VLOG(4) << "Use unsafe fast gc for " << place_ << ".";
-        gc.reset(new CustomDeviceUnsafeFastGarbageCollector(place_,
-                                                            max_memory_size));
-      } else {
-        VLOG(4) << "Use default stream gc for " << place_ << ".";
-        gc.reset(
-            new CustomDefaultStreamGarbageCollector(place_, max_memory_size));
-      }
-#else
-      PADDLE_THROW(platform::errors::Unimplemented("No CustomDevice gc found"));
-#endif
-    }
+    gc = CreateGarbageCollector(place_, max_memory_size);
   }
 
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+  TRACE_SCOPE_START("executor ops run",);
+#endif
   for (int64_t i = start_op_index; i < end_op_index; ++i) {
     auto& op = ctx->ops_[i];
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    xpu_wait();
+    RUNTIME_TRACE_SCOPE_START((op->Type()+" run").c_str(),);
+#endif
     op->Run(*local_scope, place_);
     if (gc) {
       platform::RecordEvent record(
           "CheckGC", platform::TracerEventType::UserDefined, 10);
       DeleteUnusedTensors(*local_scope, op.get(), ctx->unused_vars_, gc.get());
     }
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    RUNTIME_TRACE_SCOPE_END((op->Type()+" run").c_str(),);
+    xpu_wait();
+#endif
   }
-
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+  TRACE_SCOPE_END("executor ops run",);
+#endif
   auto callback = [scope, local_scope, keep_kids]() {
     if (local_scope != scope) {
       VLOG(4) << "Delete scope: " << local_scope;

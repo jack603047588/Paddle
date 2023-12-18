@@ -47,6 +47,7 @@ class FusedSeqpoolCVMOp : public framework::OperatorWithKernel {
     bool use_cvm = ctx->Attrs().Get<bool>("use_cvm");
     bool clk_filter = ctx->Attrs().Get<bool>("clk_filter");
     const int embed_thres_size = ctx->Attrs().Get<int>("embed_thres_size");
+    const int embedx_concate_size = ctx->Attrs().Get<int>("embedx_concate_size");
 
     // need filter quant_ratio more than zero
     if (ctx->Attrs().Get<bool>("need_filter")) {
@@ -85,12 +86,12 @@ class FusedSeqpoolCVMOp : public framework::OperatorWithKernel {
       std::vector<int64_t> out_dim;
       if (use_cvm) {
         if (clk_filter) {
-          out_dim = {-1, dims[rank - 1] - 1};
+          out_dim = {-1, (dims[rank - 1] - 1) * embedx_concate_size};
         } else {
         out_dim = {-1, dims[rank - 1]};
         }
       } else {
-        out_dim = {-1, dims[rank - 1] - cvm_offset - embed_thres_size};
+        out_dim = {-1, (dims[rank - 1] - cvm_offset - embed_thres_size) * embedx_concate_size};
       }
       outs_dims[i] = phi::make_ddim(out_dim);
     }
@@ -139,6 +140,8 @@ class FusedSeqpoolCVMOpMaker : public framework::OpProtoAndCheckerMaker {
     AddAttr<int>("quant_ratio", "(int, default 128)").SetDefault(0);
     AddAttr<bool>("clk_filter", "(bool, default false)").SetDefault(false);
     AddAttr<int>("embed_thres_size", "(int, default 0)").SetDefault(0);
+    AddAttr<int>("embedx_concate_size", "(int, default 1)").SetDefault(1);
+    AddAttr<bool>("embedx_concate_filter", "(bool, default false)").SetDefault(false);
 
     AddComment(R"DOC(
 Fuse multiple pairs of Sequence Pool and CVM Operator.
@@ -159,6 +162,7 @@ class FusedSeqpoolCVMGradOp : public framework::OperatorWithKernel {
     bool use_cvm = ctx->Attrs().Get<bool>("use_cvm");
     bool clk_filter = ctx->Attrs().Get<bool>("clk_filter");
     const int embed_thres_size = ctx->Attrs().Get<int>("embed_thres_size");
+    const int embedx_concate_size = ctx->Attrs().Get<int>("embedx_concate_size");
 
     PADDLE_ENFORCE_EQ(
         cvm_dims.size(), 2,
@@ -174,7 +178,7 @@ class FusedSeqpoolCVMGradOp : public framework::OperatorWithKernel {
       if (use_cvm) {
         auto o_dim = og_dims[i][og_dims[i].size() - 1];
         if (clk_filter) {  // filter clk need + 1
-          o_dim = o_dim + 1;
+          o_dim = o_dim / embedx_concate_size + 1;
         }
         PADDLE_ENFORCE_EQ(
             o_dim, x_dims[i][og_dims[i].size() - 1],
@@ -187,7 +191,7 @@ class FusedSeqpoolCVMGradOp : public framework::OperatorWithKernel {
       } else {
         PADDLE_ENFORCE_EQ(
             og_dims[i][og_dims[i].size() - 1],
-            x_dims[i][og_dims[i].size() - 1] - cvm_offset - embed_thres_size,
+            (x_dims[i][og_dims[i].size() - 1] - cvm_offset - embed_thres_size) * embedx_concate_size,
             platform::errors::InvalidArgument(
                 "The dimension mismatch between Input(OUT@GRAD) and "
                 "Input(X). Received Input(OUT@GRAD): input rank %u, "

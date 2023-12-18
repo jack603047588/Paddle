@@ -76,6 +76,8 @@ static const std::unordered_set<std::string> &GetOpWithUnusedVarAllowSet() {
       "fused_batch_norm_act_grad",          // 2
       "data_norm",                          // 0
       "data_norm_grad",                     // 0
+      "masked_data_norm",                   // 0
+      "masked_data_norm_grad",              // 0
       "update_loss_scaling",                // 0
       "fused_embedding_eltwise_layernorm",  // 0
       "trunc_grad",                         // 1

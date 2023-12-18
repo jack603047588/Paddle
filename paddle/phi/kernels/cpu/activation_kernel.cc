@@ -70,7 +70,6 @@ DEFINE_CPU_ACTIVATION_KERNEL(Cosh, CoshFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(Asinh, AsinhFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(Acosh, AcoshFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(Atanh, AtanhFunctor)
-DEFINE_CPU_ACTIVATION_KERNEL(Relu, ReluCPUFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(Tanh, TanhFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(TanhShrink, TanhShrinkFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(Silu, SiluFunctor)
@@ -92,6 +91,7 @@ DEFINE_CPU_ACTIVATION_KERNEL(Floor, FloorFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(Ceil, CeilFunctor)
 DEFINE_CPU_ACTIVATION_KERNEL(Negative, NegativeFunctor)
 
+DEFINE_CPU_ACT_KERNEL_WITH_ONE_ATTRS(Relu, ReluCPUFunctor, safe)
 DEFINE_CPU_ACT_KERNEL_WITH_ONE_ATTRS(LeakyRelu, LeakyReluFunctor, alpha)
 DEFINE_CPU_ACT_KERNEL_WITH_ONE_ATTRS(ThresholdedRelu,
                                      ThresholdedReluFunctor,

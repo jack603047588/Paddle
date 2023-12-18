@@ -147,6 +147,10 @@ class LayerHelper(LayerHelperBase):
             return input_var
         if isinstance(act, six.string_types):
             act = {'type': act}
+        elif isinstance(act, dict) and 'type' in act:
+            # act can be a dict to pass some attributes to activation op:
+            # e.g. fluid.layers.fc(..., act={'type': 'relu', 'safe': 1.})
+            act = copy.deepcopy(act)
         else:
             raise TypeError(str(act) + " should be unicode or str")
 

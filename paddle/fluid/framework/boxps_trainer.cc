@@ -160,7 +160,7 @@ void BoxPSTrainer::DumpParameters(void) {
     auto* root_tensor = root_scope_->Var(var)->GetMutable<LoDTensor>();
     // TODO(hutuxian): Add a final all-reduce?
     const auto& thread_tensor = thread_scope->FindVar(var)->Get<LoDTensor>();
-    TensorCopySync(thread_tensor, platform::CPUPlace(), root_tensor);
+    TensorCopy(thread_tensor, root_tensor->place(), root_tensor);
   }
 }
 

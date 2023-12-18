@@ -1498,7 +1498,8 @@ def rank_attention(input,
                    rank_param_shape,
                    rank_param_attr,
                    max_rank=3,
-                   max_size=0):
+                   max_size=0,
+                   enable_input_bp=False):
     """
     **Rank Attention layer**
     This Op can calculate rank attention between input and rank_param, and 
@@ -1511,6 +1512,7 @@ def rank_attention(input,
         rank_para_shape: The shape of rank_param.
         rank_param_attr: Attribute initializer of rank_param.
         max_rank: The max rank of input's ranks.
+        enable_input_bp: Enable Back Propagation of input.
     Returns:
         Variable: A Tensor with the same data type as input's.
     Examples:
@@ -1548,7 +1550,6 @@ def rank_attention(input,
         dtype=dtype, stop_gradient=True)
     ins_rank = helper.create_variable_for_type_inference(
         dtype=dtype, stop_gradient=True)
-
     helper.append_op(
         type="rank_attention",
         inputs={
@@ -1562,9 +1563,9 @@ def rank_attention(input,
             "ParamHelp": param_help,
             "InsRank": ins_rank
         },
-
         attrs={"MaxRank": max_rank,
-               "MaxSize": max_size})
+               "MaxSize": max_size,
+               "EnableInputBp": enable_input_bp})
 
     return output
 
@@ -1756,7 +1757,9 @@ def fused_seqpool_cvm(input,
                       cvm_offset=2,
                       quant_ratio=0,
                       clk_filter=False,
-                      embed_thres_size=0):
+                      embed_thres_size=0,
+                      embedx_concate_size=1,
+                      embedx_concate_filter=False):
     """
      **Notes: The Op only receives List of LoDTensor as input, only support SUM pooling now.
     :attr:`input`.
@@ -1766,6 +1769,7 @@ def fused_seqpool_cvm(input,
         cvm(Variable): cvm Variable.
         pad_value(float): padding value of sequence pool.
         use_cvm(bool): use cvm or not.
+        embedx_concate_size(uint): is expand slot's feasign into matrix
     Returns:
         Variable|list of Variable: The tensor variable storing sequence pool and cvm
         of input.
@@ -1812,7 +1816,9 @@ def fused_seqpool_cvm(input,
             "embed_threshold": embed_threshold,
             "quant_ratio": quant_ratio,
             "clk_filter": clk_filter,
-            "embed_thres_size": embed_thres_size
+            "embed_thres_size": embed_thres_size,
+            "embedx_concate_size": embedx_concate_size,
+            "embedx_concate_filter": embedx_concate_filter
         })
 
     return outs
@@ -2615,25 +2621,7 @@ def scaled_fc(input,
         attrs={
             'input_scale_factor': input_scale_factor,
             'bias_scale_factor': bias_scale_factor,
-            'grad_scale_factor': grad_scale_factor
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            'grad_scale_factor': grad_scale_factor,
         },
         outputs={"Out": pre_act})
 

@@ -62,22 +62,63 @@ void BasicAucCalculator::add_unlock_data(double pred, int label, float sample_sc
   _table[label][pos] += sample_scale;
 }
 
-void BasicAucCalculator::add_data(
-        const float* d_pred, const int64_t* d_label,
-        int batch_size, const paddle::platform::Place& place_pred,
-        const paddle::platform::Place& place_label) {
+void BasicAucCalculator::add_unlock_data_with_float_label(double pred, double label) {
+  PADDLE_ENFORCE_GE(pred, 0.0, platform::errors::PreconditionNotMet(
+                                   "pred should be greater than 0"));
+  PADDLE_ENFORCE_LE(pred, 1.0, platform::errors::PreconditionNotMet(
+                                   "pred should be lower than 1"));
+
+  int pos = static_cast<int>(pred * _table_size);
+  PADDLE_ENFORCE_GE(
+      pos, 0,
+      platform::errors::PreconditionNotMet(
+          "pos must be equal or greater than 0, but its value is: %d", pos));
+  PADDLE_ENFORCE_LT(
+      pos, _table_size,
+      platform::errors::PreconditionNotMet(
+          "pos must be less than table_size, but its value is: %d", pos));
+  _local_abserr += fabs(pred - label);
+  _local_sqrerr += (pred - label) * (pred - label);
+  _local_pred += pred;
+  _table[0][pos] += 1 - label;
+  _table[1][pos] += label;
+}
+
+void BasicAucCalculator::add_unlock_data_with_continue_label(double pred,
+                                                             double label) {
+  _local_abserr += fabs(pred - label);
+  _local_sqrerr += (pred - label) * (pred - label);
+  _local_pred += pred;
+  _local_label += label;
+  ++_local_total_num;
+}
+
+void BasicAucCalculator::add_nan_inf_unlock_data(float pred, int label){
+  _size++;
+  if(std::isnan(pred)){
+    ++_nan_cnt;
+  } else if(std::isinf(pred)){
+    ++_inf_cnt;
+  }
+}
+
+void BasicAucCalculator::add_data(const float* d_pred,
+                                  const int64_t* d_label,
+                                  int batch_size,
+                                  const paddle::platform::Place& place_pred,
+                                  const paddle::platform::Place& place_label) {
   thread_local std::vector<float> h_pred;
   thread_local std::vector<int64_t> h_label;
   const float* add_pred = d_pred;
   const int64_t* add_label = d_label;
   if (platform::is_gpu_place(place_pred) || platform::is_xpu_place(place_pred)) {
     h_pred.resize(batch_size);
-    SyncCopyD2H(h_pred.data(), d_pred, batch_size);
+    SyncCopyD2H(h_pred.data(), d_pred, batch_size, place_pred);
     add_pred = h_pred.data();
   }
   if (platform::is_gpu_place(place_label) || platform::is_xpu_place(place_label)) {
     h_label.resize(batch_size);
-    SyncCopyD2H(h_label.data(), d_label, batch_size);
+    SyncCopyD2H(h_label.data(), d_label, batch_size, place_label);
     add_label = h_label.data();
   }
   std::lock_guard<std::mutex> lock(_table_mutex);
@@ -87,8 +128,10 @@ void BasicAucCalculator::add_data(
 }
 
 void BasicAucCalculator::add_sample_data(
-    const float* d_pred, const int64_t* d_label,
-    const std::vector<float>& d_sample_scale, int batch_size,
+    const float* d_pred,
+    const int64_t* d_label,
+    const std::vector<float>& d_sample_scale,
+    int batch_size,
     const paddle::platform::Place& place_pred,
     const paddle::platform::Place& place_label) {
   thread_local std::vector<float> h_pred;
@@ -97,12 +140,12 @@ void BasicAucCalculator::add_sample_data(
   const int64_t* add_label = d_label;
   if (platform::is_gpu_place(place_pred) || platform::is_xpu_place(place_pred)) {
     h_pred.resize(batch_size);
-    SyncCopyD2H(h_pred.data(), d_pred, batch_size);
+    SyncCopyD2H(h_pred.data(), d_pred, batch_size, place_pred);
     add_pred = h_pred.data();
   }
   if (platform::is_gpu_place(place_label) || platform::is_xpu_place(place_label)) {
     h_label.resize(batch_size);
-    SyncCopyD2H(h_label.data(), d_label, batch_size);
+    SyncCopyD2H(h_label.data(), d_label, batch_size, place_label);
     add_label = h_label.data();
   }
   std::lock_guard<std::mutex> lock(_table_mutex);
@@ -114,7 +157,8 @@ void BasicAucCalculator::add_sample_data(
 // add mask data
 void BasicAucCalculator::add_mask_data(const float* d_pred,
                                        const int64_t* d_label,
-                                       const int64_t* d_mask, int batch_size,
+                                       const int64_t* d_mask,
+                                       int batch_size,
                                        const paddle::platform::Place& place_pred,
                                        const paddle::platform::Place& place_label,
                                        const paddle::platform::Place& place_mask) {
@@ -126,23 +170,90 @@ void BasicAucCalculator::add_mask_data(const float* d_pred,
   const int64_t* add_mask = d_mask;
   if (platform::is_gpu_place(place_pred) || platform::is_xpu_place(place_pred)) {
     h_pred.resize(batch_size);
-    SyncCopyD2H(h_pred.data(), d_pred, batch_size);
+    SyncCopyD2H(h_pred.data(), d_pred, batch_size, place_pred);
     add_pred = h_pred.data();
   }
   if (platform::is_gpu_place(place_label) || platform::is_xpu_place(place_label)) {
     h_label.resize(batch_size);
-    SyncCopyD2H(h_label.data(), d_label, batch_size);
+    SyncCopyD2H(h_label.data(), d_label, batch_size, place_label);
     add_label = h_label.data();
   }
   if (platform::is_gpu_place(place_mask) || platform::is_xpu_place(place_mask)) {
     h_mask.resize(batch_size);
-    SyncCopyD2H(h_mask.data(), d_label, batch_size);
+    SyncCopyD2H(h_mask.data(), d_mask, batch_size, place_mask);
     add_mask = h_mask.data();
   }
   std::lock_guard<std::mutex> lock(_table_mutex);
   for (int i = 0; i < batch_size; ++i) {
     if (add_mask[i]) {
       add_unlock_data(add_pred[i], add_label[i]);
+    }
+  }
+}
+// add float mask data
+void BasicAucCalculator::add_float_mask_data(const float* d_pred,
+                                             const float* d_label,
+                                             const int64_t* d_mask, int batch_size,
+                                             const paddle::platform::Place& place) {
+  if (platform::is_gpu_place(place) || platform::is_xpu_place(place)) {
+    thread_local std::vector<float> h_pred;
+    thread_local std::vector<float> h_label;
+    thread_local std::vector<int64_t> h_mask;
+    h_pred.resize(batch_size);
+    h_label.resize(batch_size);
+    h_mask.resize(batch_size);
+
+    SyncCopyD2H(h_pred.data(), d_pred, batch_size, place);
+    SyncCopyD2H(h_label.data(), d_label, batch_size, place);
+    SyncCopyD2H(h_mask.data(), d_mask, batch_size, place);
+
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    for (int i = 0; i < batch_size; ++i) {
+      if (h_mask[i]) {
+        add_unlock_data_with_float_label(h_pred[i], h_label[i]);
+      }
+    }
+  } else {
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    for (int i = 0; i < batch_size; ++i) {
+      if (d_mask[i]) {
+        add_unlock_data_with_float_label(d_pred[i], d_label[i]);
+      }
+    }
+  }
+}
+
+// add continue mask data
+void BasicAucCalculator::add_continue_mask_data(
+    const float* d_pred,
+    const float* d_label,
+    const int64_t* d_mask,
+    int batch_size,
+    const paddle::platform::Place& place) {
+  if (platform::is_gpu_place(place) || platform::is_xpu_place(place)) {
+    thread_local std::vector<float> h_pred;
+    thread_local std::vector<float> h_label;
+    thread_local std::vector<int64_t> h_mask;
+    h_pred.resize(batch_size);
+    h_label.resize(batch_size);
+    h_mask.resize(batch_size);
+
+    SyncCopyD2H(h_pred.data(), d_pred, batch_size, place);
+    SyncCopyD2H(h_label.data(), d_label, batch_size, place);
+    SyncCopyD2H(h_mask.data(), d_mask, batch_size, place);
+
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    for (int i = 0; i < batch_size; ++i) {
+      if (h_mask[i]) {
+        add_unlock_data_with_continue_label(h_pred[i], h_label[i]);
+      }
+    }
+  } else {
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    for (int i = 0; i < batch_size; ++i) {
+      if (d_mask[i]) {
+        add_unlock_data_with_continue_label(d_pred[i], d_label[i]);
+      }
     }
   }
 }
@@ -166,6 +277,8 @@ void BasicAucCalculator::reset() {
   _local_abserr = 0;
   _local_sqrerr = 0;
   _local_pred = 0;
+  _local_label = 0;
+  _local_total_num = 0;
 }
 
 void BasicAucCalculator::compute() {
@@ -302,17 +415,17 @@ void BasicAucCalculator::add_uid_data(const float* d_pred,
   const int64_t* add_uid = d_uid;
   if (platform::is_gpu_place(place_pred) || platform::is_xpu_place(place_pred)) {
     h_pred.resize(batch_size);
-    SyncCopyD2H(h_pred.data(), d_pred, batch_size);
+    SyncCopyD2H(h_pred.data(), d_pred, batch_size, place_pred);
     add_pred = h_pred.data();
   }
   if (platform::is_gpu_place(place_label) || platform::is_xpu_place(place_label)) {
     h_label.resize(batch_size);
-    SyncCopyD2H(h_label.data(), d_label, batch_size);
+    SyncCopyD2H(h_label.data(), d_label, batch_size, place_label);
     add_label = h_label.data();
   }
   if (platform::is_gpu_place(place_uid) || platform::is_xpu_place(place_uid)) {
     h_uid.resize(batch_size);
-    SyncCopyD2H(h_uid.data(), d_label, batch_size);
+    SyncCopyD2H(h_uid.data(), d_label, batch_size, place_uid);
     add_uid = h_uid.data();
   }
   std::lock_guard<std::mutex> lock(_table_mutex);
@@ -320,6 +433,31 @@ void BasicAucCalculator::add_uid_data(const float* d_pred,
       add_uid_unlock_data(add_pred[i], add_label[i],
           static_cast<uint64_t>(add_uid[i]));
   }
+}
+
+void BasicAucCalculator::add_nan_inf_data(const float* d_pred,
+                                          const int64_t* d_label,
+                                          int batch_size,
+                                          const paddle::platform::Place& place){
+  if (platform::is_gpu_place(place) || platform::is_xpu_place(place)) {
+    thread_local std::vector<float> h_pred;
+    thread_local std::vector<int64_t> h_label;
+    h_pred.resize(batch_size);
+    h_label.resize(batch_size);
+    SyncCopyD2H(h_pred.data(), d_pred, batch_size, place);
+    SyncCopyD2H(h_label.data(), d_label, batch_size, place);
+
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    for (int i = 0; i < batch_size; ++i) {
+      add_nan_inf_unlock_data(h_pred[i], h_label[i]);
+    }
+  } else {
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    for (int i = 0; i < batch_size; ++i) {
+      add_nan_inf_unlock_data(d_pred[i], d_label[i]);
+    }
+  }
+
 }
 
 void BasicAucCalculator::add_uid_unlock_data(double pred,
@@ -432,6 +570,73 @@ BasicAucCalculator::WuaucRocData BasicAucCalculator::computeSingelUserAuc(
     auc = -1;
   }
   return {tp, fp, auc};
+}
+
+void BasicAucCalculator::reset_nan_inf(){
+  _nan_cnt = 0;
+  _inf_cnt = 0;
+  _nan_rate = 0;
+  _inf_rate = 0;
+  _nan_inf_rate = 0;
+  _size = 0;
+}
+
+void BasicAucCalculator::computeContinueMsg() {
+  int node_size = 1;
+#ifdef PADDLE_WITH_BOX_PS
+  node_size = boxps::MPICluster::Ins().size();
+#elif defined(PADDLE_WITH_GLOO)
+  auto gloo_wrapper = paddle::framework::GlooWrapper::GetInstance();
+  if (!gloo_wrapper->IsInitialized()) {
+    VLOG(0) << "GLOO is not inited";
+    gloo_wrapper->Init();
+  }
+  std::vector<double> pair_table;
+  node_size = gloo_wrapper->Size();
+#endif
+  if (node_size > 1) {
+#ifdef PADDLE_WITH_BOX_PS
+    // allreduce sum
+    double local_err[5] = {_local_abserr,
+                           _local_sqrerr,
+                           _local_pred,
+                           _local_label,
+                           _local_total_num};
+    boxps::MPICluster::Ins().allreduce_sum(local_err, 5);
+#elif defined(PADDLE_WITH_GLOO)
+    // allreduce sum
+    std::vector<double> local_err_temp{_local_abserr,
+                                       _local_sqrerr,
+                                       _local_pred,
+                                       _local_label,
+                                       _local_total_num};
+    auto local_err = gloo_wrapper->AllReduce(local_err_temp, "sum");
+#else
+    // allreduce sum
+    double local_err[5] = {_local_abserr,
+                           _local_sqrerr,
+                           _local_pred,
+                           _local_label,
+                           _local_total_num};
+#endif
+    _mae = local_err[0] / _local_total_num;
+    _rmse = sqrt(local_err[1] / _local_total_num);
+    _predicted_value = local_err[2] / _local_total_num;
+    _actual_value = local_err[3] / _local_total_num;
+  } else {
+    _mae = _local_abserr / _local_total_num;
+    _rmse = sqrt(_local_sqrerr / _local_total_num);
+    _predicted_value = _local_pred / _local_total_num;
+    _actual_value = _local_label / _local_total_num;
+  }
+
+  _size = _local_total_num;
+}
+
+void BasicAucCalculator::computeNanInfMsg() {
+  _nan_rate = _nan_cnt / _size;
+  _inf_rate = _inf_cnt / _size;
+  _nan_inf_rate = (_nan_cnt + _inf_cnt) / _size;
 }
 
 }  // namespace framework

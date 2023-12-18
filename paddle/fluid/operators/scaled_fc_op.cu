@@ -80,8 +80,13 @@ __global__ void kernel_cast_and_cut(const int N,
       int col_idx = i % coln_ori;
       int row_idx = i / coln_ori;
       int idx = row_idx * coln_pad + col_idx;
-      matrix[i] = static_cast<T>(matrix_pad[idx]);
-      matrix[i] *= scale_factor;
+      T tmp = static_cast<T>(matrix_pad[idx]) * scale_factor;
+      // Some functions will replace inf with a normal float number such as fmax, which stops us finding
+      // abnormal instance in the final output tensors. Replace inf with nan to let bad things propagate.
+      if (isinf(tmp)) {
+        tmp = std::numeric_limits<T>::quiet_NaN();
+      }
+      matrix[i] = tmp;
   }
 }
 

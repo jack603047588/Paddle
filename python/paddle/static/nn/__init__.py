@@ -26,6 +26,7 @@ from ...fluid.layers import conv3d_transpose  # noqa: F401
 from ...fluid.layers import create_parameter  # noqa: F401
 from ...fluid.layers import crf_decoding  # noqa: F401
 from ...fluid.layers import data_norm  # noqa: F401
+from ...fluid.layers import masked_data_norm  # noqa: F401
 from ...fluid.layers import group_norm  # noqa: F401
 from ...fluid.layers import instance_norm  # noqa: F401
 from ...fluid.layers import layer_norm  # noqa: F401
@@ -72,6 +73,7 @@ __all__ = [  #noqa
     'conv3d_transpose',
     'crf_decoding',
     'data_norm',
+    'masked_data_norm',
     'deform_conv2d',
     'group_norm',
     'instance_norm',

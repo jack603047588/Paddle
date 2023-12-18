@@ -90,7 +90,7 @@ PADDLE_DEFINE_EXPORTED_bool(use_virtual_memory_auto_growth,
 // the old single-stream CUDA allocator. It will be removed
 // after StreamSafeCudaAllocator has been fully tested.
 PADDLE_DEFINE_EXPORTED_bool(use_stream_safe_cuda_allocator,
-                            true,
+                            false,
                             "Enable StreamSafeCUDAAllocator");
 
 PADDLE_DEFINE_EXPORTED_bool(use_cuda_managed_memory,
@@ -353,7 +353,7 @@ class AllocatorFacadePrivate {
       WrapCUDARetryAllocator(FLAGS_gpu_allocator_retry_time);
     }
 
-    WrapStatAllocator();
+//    WrapStatAllocator();
 
     CheckAllocThreadSafe();
 
@@ -1233,7 +1233,7 @@ void AllocatorFacade::RemoveMemoryPoolOfCUDAGraph(int64_t id) {
 // return real used, total is in alloc, available is in free
 size_t AllocatorFacade::GetTotalMemInfo(const platform::Place& place,
                                         size_t* total, size_t* available) {
-  return m_->GetAllocator(place, /* A non-zero num to choose allocator_ */ 1)
+  return GetPrivate()->GetAllocator(place, /* A non-zero num to choose allocator_ */ 1)
       ->GetTotalMemInfo(total, available);
 }
 #endif

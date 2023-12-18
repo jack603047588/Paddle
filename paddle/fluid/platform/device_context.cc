@@ -133,7 +133,12 @@ DeviceType Place2DeviceType(const platform::Place& place) {
   }
 }
 
+#if (defined PADDLE_WITH_XPU) && (defined PADDLE_ON_INFERENCE) && (!defined PADDLE_WITH_BOX_PS)
+std::vector<platform::Place> DeviceContextPool::places_;
+thread_local bool DeviceContextPool::is_init_ = false;
+#else
 DeviceContextPool* DeviceContextPool::pool = nullptr;
+#endif
 thread_local const std::map<Place,
                             std::shared_future<std::unique_ptr<DeviceContext>>>*
     DeviceContextPool::external_device_contexts_ = nullptr;
@@ -369,12 +374,15 @@ void EmplaceDeviceContexts(
   }
 }
 
+#if (defined PADDLE_WITH_XPU) && (defined PADDLE_ON_INFERENCE) && (!defined PADDLE_WITH_BOX_PS)
+#else
 DeviceContextPool::DeviceContextPool(
     const std::vector<platform::Place>& places) {
   EmplaceDeviceContexts(&device_contexts_,
                         places,
                         /*disable_setting_default_stream_for_allocator=*/false);
 }
+#endif
 
 #ifdef PADDLE_WITH_IPU
 IPUDeviceContext::IPUDeviceContext(IPUPlace place) : place_(place) {}

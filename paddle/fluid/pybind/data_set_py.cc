@@ -218,6 +218,9 @@ void BindDataset(py::module *m) {
       .def("set_filelist",
            &framework::Dataset::SetFileList,
            py::call_guard<py::gil_scoped_release>())
+      .def("set_index_filelist",
+           &framework::Dataset::SetIndexFileList,
+           py::call_guard<py::gil_scoped_release>())
       .def("set_thread_num",
            &framework::Dataset::SetThreadNum,
            py::call_guard<py::gil_scoped_release>())

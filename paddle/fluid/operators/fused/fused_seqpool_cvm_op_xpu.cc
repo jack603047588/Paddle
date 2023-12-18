@@ -61,6 +61,9 @@ template <typename DeviceContext, typename T>
 class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
  public:
   void Compute(const framework::ExecutionContext& ctx) const override {
+#ifdef TRACE_PROFILE
+    TRACE_SCOPE_START("FusedSeqpoolCVMOpXPUKernel Compute", xpu_wait(ctx.template device_context<DeviceContext>().x_context()->xpu_stream));
+#endif
     auto ins = ctx.MultiInput<LoDTensor>("X");
     auto out = ctx.MultiOutput<LoDTensor>("Out");
     std::string pooltype = ctx.Attr<std::string>("pooltype");
@@ -73,6 +76,9 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
     auto clk_coeff = ctx.Attr<float>("clk_coeff");
     auto threshold = ctx.Attr<float>("threshold");
     auto cvm_offset = ctx.Attr<int>("cvm_offset");
+    bool embed_threshold_filter = ctx.Attr<bool>("embed_threshold_filter");
+    float embed_threshold = ctx.Attr<float>("embed_threshold");
+    int embed_thres_size = ctx.Attr<int>("embed_thres_size");
 
     auto x0_lod = ins[0]->lod();
     auto x0_dims = ins[0]->dims();
@@ -97,12 +103,13 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
     phi::Place l3_place = ctx.template device_context<DeviceContext>().GetL3Place();
     int w = ins[0]->numel() / x0_dims[0];
     if(use_cvm) {
+      if(clk_filter) w = w - 1;
       PADDLE_ENFORCE_EQ(y_dims[1] % w, 0,
                         paddle::platform::errors::InvalidArgument(
                             "The output of dims[1] should be dividable of w"));
     }
     else{
-      PADDLE_ENFORCE_EQ(y_dims[1] % (w-2), 0,
+      PADDLE_ENFORCE_EQ(y_dims[1] % (w - cvm_offset - embed_thres_size), 0,
                   paddle::platform::errors::InvalidArgument(
                       "The output of dims[1] should be dividable of (w-2)"));
     }
@@ -125,7 +132,9 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
         }
 	      lod_index += x_lod.size();
     }
-
+#ifdef TRACE_PROFILE
+    TRACE_SCOPE_START("xpu::sequence_sum_pool_cvm", xpu_wait(xpu_context->xpu_stream););
+#endif
     int r = xpu::sequence_sum_pool_cvm<T>(xpu_context,
                                           cpu_x_addr_vec,
                                           cpu_y_addr_vec,
@@ -141,11 +150,16 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
                                           show_coeff,
                                           clk_coeff,
                                           threshold,
-                                          cvm_offset);
+                                          cvm_offset,
+                                          embed_threshold_filter,
+                                          embed_threshold,
+                                          embed_thres_size);
     PADDLE_ENFORCE_EQ(r, xpu::Error_t::SUCCESS,
                      platform::errors::External(
-                         "The sequence_sum_pool_cvm_concat XPU OP return wrong value[%d %s]",
+                         "The sequence_sum_pool_cvm XPU OP return wrong value[%d %s]",
                          r, XPUAPIErrorMsg[r]));
+    TRACE_SCOPE_END("xpu::sequence_sum_pool_cvm", xpu_wait(xpu_context->xpu_stream););
+    TRACE_SCOPE_END("FusedSeqpoolCVMOpXPUKernel Compute", xpu_wait(xpu_context->xpu_stream));
   }
 };
 
@@ -153,6 +167,9 @@ template <typename DeviceContext, typename T>
 class FusedSeqpoolCVMGradOpXPUKernel : public framework::OpKernel<T> {
  public:
   void Compute(const framework::ExecutionContext& ctx) const override {
+#ifdef TRACE_PROFILE
+    TRACE_SCOPE_START("FusedSeqpoolCVMGradOpXPUKernel Compute", xpu_wait(ctx.template device_context<DeviceContext>().x_context()->xpu_stream));
+#endif
     auto dOut = ctx.MultiInput<framework::LoDTensor>(framework::GradVarName("Out"));
     auto xs = ctx.MultiInput<LoDTensor>("X");
     const Tensor* cvm = ctx.Input<Tensor>("CVM");
@@ -160,6 +177,7 @@ class FusedSeqpoolCVMGradOpXPUKernel : public framework::OpKernel<T> {
     auto use_cvm = ctx.Attr<bool>("use_cvm");//TODO:
     bool clk_filter = ctx.Attr<bool>("clk_filter");
     auto cvm_offset = ctx.Attr<int>("cvm_offset");
+    int embed_thres_size = ctx.Attr<int>("embed_thres_size");
     int slot_num = dxs.size();
     auto xpu_context = ctx.template device_context<DeviceContext>().x_context();
     auto place = ctx.GetPlace();
@@ -217,11 +235,14 @@ class FusedSeqpoolCVMGradOpXPUKernel : public framework::OpKernel<T> {
                                                clk_filter,//split
                                                item_size,
                                                batch_size,
-                                               slot_num);
+                                               slot_num,
+                                               embed_thres_size);                                    
+
      PADDLE_ENFORCE_EQ(r, xpu::Error_t::SUCCESS,
             platform::errors::External(
                "The sequence_pool_cvm_grad XPU OP return wrong value[%d %s]",
                r, XPUAPIErrorMsg[r]));
+    TRACE_SCOPE_END("FusedSeqpoolCVMGradOpXPUKernel Compute", xpu_wait(xpu_context->xpu_stream));
   }
 };
 

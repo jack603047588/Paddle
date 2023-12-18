@@ -667,7 +667,7 @@ def rrelu(x, lower=1. / 8., upper=1. / 3., training=True, name=None):
     return out
 
 
-def relu(x, name=None):
+def relu(x, name=None, safe=0.):
     """
     relu activation.
 
@@ -701,7 +701,10 @@ def relu(x, name=None):
     check_variable_and_dtype(x, 'x', ['float16', 'float32', 'float64'], 'relu')
     helper = LayerHelper('relu', **locals())
     out = helper.create_variable_for_type_inference(x.dtype)
-    helper.append_op(type='relu', inputs={'X': x}, outputs={'Out': out})
+    attrs = {}
+    if safe != 0.:
+        attrs['safe'] = safe
+    helper.append_op(type='relu', inputs={'X': x}, outputs={'Out': out}, attrs=attrs)
     return out
 
 

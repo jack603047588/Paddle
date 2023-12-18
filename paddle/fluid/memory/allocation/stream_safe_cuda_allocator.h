@@ -75,7 +75,10 @@ class StreamSafeCUDAAllocator
   phi::Allocation *AllocateImpl(size_t size) override;
   void FreeImpl(phi::Allocation *allocation) override;
   uint64_t ReleaseImpl(const platform::Place &place) override;
-
+  // return real used, total is in alloc
+  size_t GetTotalMemInfo(size_t *total, size_t *available) {
+    return underlying_allocator_->GetTotalMemInfo(total, available);
+  }
  private:
   void ProcessUnfreedAllocations();
   uint64_t ProcessUnfreedAllocationsAndRelease();

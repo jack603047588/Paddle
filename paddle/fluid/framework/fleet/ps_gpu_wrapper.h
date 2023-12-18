@@ -715,8 +715,8 @@ class PSGPUWrapper {
   std::shared_ptr<HeterContext> current_task_ = nullptr;
   std::thread pre_build_threads_;
   bool running_ = false;
-  std::vector<std::shared_ptr<ThreadPool>> pull_thread_pool_;
-  std::vector<std::shared_ptr<ThreadPool>> hbm_thread_pool_;
+  std::vector<std::shared_ptr<::ThreadPool>> pull_thread_pool_;
+  std::vector<std::shared_ptr<::ThreadPool>> hbm_thread_pool_;
   OptimizerConfig optimizer_config_;
 
  protected:

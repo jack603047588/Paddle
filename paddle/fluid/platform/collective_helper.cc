@@ -19,6 +19,7 @@
 #include "paddle/fluid/memory/allocation/allocator_facade.h"
 #include "paddle/fluid/platform/device/device_wrapper.h"
 #include "paddle/fluid/platform/device/gpu/gpu_resource_pool.h"
+#include "paddle/fluid/platform/device/xpu/bkcl_helper.h"
 
 namespace paddle {
 namespace platform {
@@ -358,17 +359,30 @@ void BKCLCommContext::CreateBKCLCommMultiTrainer(
   VLOG(1) << "Begin CreateBKCLCommMultiTrainer. device number: " << kDevices
           << ", ntrainers: " << ntrainers << ", train_id: " << train_id
           << ", rind_id: " << ring_id;
-  BKCLContext_t comms[kDevices];
+
+  std::unique_ptr<BKCLContext_t[]> comms(new BKCLContext_t[kDevices]);
+  std::unique_ptr<InitBKCLPara[]> paras(new InitBKCLPara[kDevices]);
+  std::unique_ptr<pthread_t[]> pids(new pthread_t[kDevices]);
   {
-    PADDLE_ENFORCE_XPU_SUCCESS(bkcl_group_start());
     for (int i = 0; i < kDevices; i++) {
-      platform::SetXPUDeviceId(i);
-      PADDLE_ENFORCE_XPU_SUCCESS(bkcl_init_rank(
-          comms + i, train_id * kDevices + i, kDevices * ntrainers, bkcl_id));
-      VLOG(1) << "bkclCommInitRank: " << i;
+      int rank = train_id * kDevices + i;
+      int nranks = kDevices * ntrainers;
+
+      paras[i].rank = rank;
+      paras[i].nranks = nranks;
+      paras[i].dev_id = dev_ids[i];
+      paras[i].bkcl_id = bkcl_id;
+      paras[i].ctx = &comms[i];
+      PADDLE_ENFORCE_EQ(pthread_create(&pids[i],
+                                         nullptr,
+                                         init_bkcl_context_func,
+                                         reinterpret_cast<void *>(&paras[i])),
+                          0,
+                          platform::errors::External("pthread_create failed"));
     }
-    PADDLE_ENFORCE_XPU_SUCCESS(bkcl_group_end());
-    VLOG(1) << "bkcl group end seccessss";
+    for (int i = 0; i < kDevices; i++) {
+      pthread_join(pids[i], nullptr);
+    }
   }
   PADDLE_ENFORCE_EQ(comm_map_.count(ring_id),
                     0,

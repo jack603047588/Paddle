@@ -87,7 +87,6 @@ DEFINE_GPU_ACTIVATION_KERNEL(Cosh, CudaCoshFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(Asinh, CudaAsinhFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(Acosh, CudaAcoshFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(Atanh, CudaAtanhFunctor)
-DEFINE_GPU_ACTIVATION_KERNEL(Relu, CudaReluFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(Tanh, CudaTanhFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(TanhShrink, CudaTanhShrinkFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(Silu, CudaSiluFunctor)
@@ -108,6 +107,7 @@ DEFINE_GPU_ACTIVATION_KERNEL(Round, CudaRoundFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(Floor, CudaFloorFunctor)
 DEFINE_GPU_ACTIVATION_KERNEL(Ceil, CudaCeilFunctor)
 
+DEFINE_GPU_ACT_KERNEL_WITH_ONE_ATTRS(Relu, CudaReluFunctor, safe)
 DEFINE_GPU_ACT_KERNEL_WITH_ONE_ATTRS(LeakyRelu, CudaLeakyReluFunctor, alpha)
 DEFINE_GPU_ACT_KERNEL_WITH_ONE_ATTRS(ThresholdedRelu,
                                      CudaThresholdedReluFunctor,

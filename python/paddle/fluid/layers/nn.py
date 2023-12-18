@@ -61,6 +61,7 @@ __all__ = [
     'inplace_abn',
     'instance_norm',
     'data_norm',
+    'masked_data_norm',
     'conv2d_transpose',
     'conv3d_transpose',
     'reduce_sum',
@@ -195,6 +196,7 @@ __all__ = [
     'uniform_random',
     'unbind',
 	'mask_mean',
+	'alias_method',
 ]
 
 OP_NAMEMAPPING = {
@@ -3667,6 +3669,205 @@ def data_norm(input,
                          "BatchSquareSum": batch_square_sum
                      },
                      attrs=attrs)
+
+    return helper.append_activation(data_norm_out)
+
+
+@static_only
+def masked_data_norm(input,
+                     mask,
+                     act=None,
+                     epsilon=1e-05,
+                     param_attr=None,
+                     data_layout='NCHW',
+                     in_place=False,
+                     name=None,
+                     moving_mean_name=None,
+                     moving_variance_name=None,
+                     do_model_average_for_mean_and_var=True,
+                     slot_dim=-1,
+                     sync_stats=False,
+                     update_norm=True,
+                     summary_decay_rate=0.9999999,
+                     enable_scale_and_shift=False):
+    r"""
+    :api_attr: Static Graph
+
+    **Data Normalization Layer**
+
+    This op can be used as a normalizer function for conv2d and fully_connected operations.
+    The required data format for this layer is one of the following:
+
+    1. NHWC `[batch, in_height, in_width, in_channels]`
+
+    2. NCHW `[batch, in_channels, in_height, in_width]`
+
+    :math:`input` is the input features over a mini-batch.
+
+    ..  math::
+
+        \\mu_{\\beta} &\\gets \\frac{1}{m} \\sum_{i=1}^{m} x_i \\qquad &//\\
+        \ mini-batch\ mean \\\\
+        \\sigma_{\\beta}^{2} &\\gets \\frac{1}{m} \\sum_{i=1}^{m}(x_i - \\
+        \\mu_{\\beta})^2 \\qquad &//\ mini-batch\ variance \\\\
+        \\hat{x_i} &\\gets \\frac{x_i - \\mu_\\beta} {\\sqrt{\\
+        \\sigma_{\\beta}^{2} + \\epsilon}} \\qquad &//\ normalize \\\\
+        y_i &\\gets \\gamma \\hat{x_i} + \\beta \\qquad &//\ scale\ and\ shift
+
+    Args:
+        input(Tensor): The input Tensor.
+        mask(Tensor): The mask Tensor
+        act(string, Default None): Activation type, linear|relu|prelu|...
+        epsilon(float, Default 1e-05):
+        param_attr(ParamAttr): The parameter attribute for Parameter `scale`.
+        data_layout (str, optional): Specify the data format of the input, and the data format of the output
+            will be consistent with that of the input. An optional string from: `"NCHW"`, `"NHWC"`.
+            The default is `"NCHW"`. When it is `"NCHW"`, the data is stored in the order of:
+            `[batch_size, input_channels, input_height, input_width]`.
+        in_place(bool, Default False): Make the input and output of batch norm reuse memory.
+        name(string, Default None): A name for this layer(optional). If set None, the layer
+            will be named automatically.
+        moving_mean_name(string, Default None): The name of moving_mean which store the global Mean.
+        moving_variance_name(string, Default None): The name of the moving_variance which store the global Variance.
+        do_model_average_for_mean_and_var(bool, Default True): Whether parameter mean and variance
+            should do model average when model average is enabled.
+        slot_dim(int): The embedding dimension of one slot. Slot is a set of one specific feature. In pslib mode, we
+            distinguish feature ids by slot and pull their embeddings from parameter server (pslib). The first
+            place of the embedding is the historical show number (occurence time of this feature id with a label 0).
+            If the input of this op is concated by slot-wise embeddings, and the show number is zero when this slot
+            is new or empty, the normalization result may be impractical. To avoid this, we add slot_dim to locate
+            the show number and judge if the show number is zero. If so, we choose to skip normalization on this
+            embedding.
+        sync_stats(bool, Default False): When running with multiple GPU cards, using allreduce to sync the
+            summary messages.
+        summary_decay_rate(float, Default 0.9999999): The decay rate when updating summary.
+        enable_scale_and_shift(bool, Default False): do scale&shift after normalization.
+
+    Returns:
+        Tensor: A tensor which is the result after applying data normalization on the input.
+
+    Examples:
+
+        .. code-block:: python
+
+            import paddle
+            paddle.enable_static()
+
+            x = paddle.randn(shape=[32,100])
+            hidden2 = paddle.static.nn.masked_data_norm(input=x, mask=x>1)
+    """
+    helper = LayerHelper('masked_data_norm', **locals())
+    dtype = helper.input_dtype()
+
+    input_shape = input.shape
+    if data_layout == 'NCHW':
+        channel_num = input_shape[1]
+    else:
+        if data_layout == 'NHWC':
+            channel_num = input_shape[-1]
+        else:
+            raise ValueError("unsupported data layout:" + data_layout)
+
+    param_shape = [channel_num]
+
+    batch_size_default = 1e4
+    batch_sum_default = 0.0
+    batch_square_sum_default = 1e4
+    scale_w_default = 1.0
+    bias_default = 0.0
+
+    if param_attr and isinstance(param_attr, dict):
+        batch_size_default = param_attr.get("batch_size", 1e4)
+        batch_sum_default = param_attr.get("batch_sum", 0.0)
+        batch_square_sum_default = param_attr.get("batch_square", 1e4)
+    if enable_scale_and_shift:
+        scale_w_default = param_attr.get("scale_w", 1.0)
+        bias_default = param_attr.get("bias", 0.0)
+
+    check_variable_and_dtype(mask, 'mask', ['bool'],
+                             'paddle.static.nn.masked_data_norm')
+
+    # create scale and shift(bias) when enable_scale_and_shift is True
+    if name == None:
+        name = "dn"
+    if enable_scale_and_shift:
+        scale_w = helper.create_parameter(
+            attr=ParamAttr(
+                name=name + '.scale_w',
+                initializer=Constant(value=float(scale_w_default)),
+                trainable=True),
+            shape=param_shape,
+            dtype=input.dtype)
+        bias = helper.create_parameter(
+            attr=ParamAttr(
+                name=name + '.bias',
+                initializer=Constant(value=float(bias_default)),
+                trainable=True),
+            shape=param_shape,
+            dtype=input.dtype)
+    # create parameter
+    batch_size = helper.create_parameter(
+        attr=ParamAttr(
+            name=name + '.batch_size',
+            initializer=Constant(value=float(batch_size_default)),
+            trainable=True),
+        shape=param_shape,
+        dtype=input.dtype)
+
+    batch_sum = helper.create_parameter(
+        attr=ParamAttr(
+            name=name + '.batch_sum',
+            initializer=Constant(value=float(batch_sum_default)),
+            trainable=True),
+        shape=param_shape,
+        dtype=input.dtype)
+
+    batch_square_sum = helper.create_parameter(
+        attr=ParamAttr(
+            name=name + '.batch_square_sum',
+            initializer=Constant(value=float(batch_square_sum_default)),
+            trainable=True),
+        shape=param_shape,
+        dtype=input.dtype)
+
+    means = helper.create_variable(dtype=dtype, stop_gradient=True)
+    scales = helper.create_variable(dtype=dtype, stop_gradient=True)
+
+    data_norm_out = input if in_place else helper.create_variable(dtype=dtype)
+
+    inputs = {
+        "X": input,
+        "Mask": mask,
+        "BatchSize": batch_size,
+        "BatchSum": batch_sum,
+        "BatchSquareSum": batch_square_sum
+    }
+    attrs = {
+        "epsilon": epsilon,
+        "data_layout": data_layout,
+        "sync_stats": sync_stats,
+        "update_norm": update_norm,
+        "summary_decay_rate": summary_decay_rate,
+    }
+    if slot_dim > 0:
+        attrs["slot_dim"] = slot_dim
+    if enable_scale_and_shift:
+        attrs["enable_scale_and_shift"] = enable_scale_and_shift
+    if enable_scale_and_shift:
+        inputs["scale_w"] = scale_w
+        inputs["bias"] = bias
+    helper.append_op(
+        type="masked_data_norm",
+        inputs=inputs,
+        outputs={
+            "Y": data_norm_out,
+            "Means": means,
+            "Scales": scales,
+            "BatchSize": batch_size,
+            "BatchSum": batch_sum,
+            "BatchSquareSum": batch_square_sum
+        },
+        attrs=attrs)
 
     return helper.append_activation(data_norm_out)
 
@@ -9191,7 +9392,7 @@ def log(x, name=None):
 
 
 @deprecated(since="2.0.0", update_to="paddle.nn.functional.relu")
-def relu(x, name=None):
+def relu(x, name=None, safe=0.):
     """
     ${comment}
 
@@ -9230,9 +9431,13 @@ def relu(x, name=None):
     helper = LayerHelper('relu', **locals())
     dtype = helper.input_dtype(input_param_name='x')
     out = helper.create_variable_for_type_inference(dtype)
+    attrs = {}
+    if safe != 0.:
+        attrs['safe'] = safe
     helper.append_op(type="relu",
                      inputs={"X": helper.input('x')},
-                     outputs={"Out": out})
+                     outputs={"Out": out},
+                     attrs=attrs)
     return out
 
 
@@ -15902,4 +16107,110 @@ def unbind(input, axis=0):
                      inputs={"X": input},
                      outputs={"Out": outs},
                      attrs={"axis": axis})
+    return outs
+def alias_method(weight, num, no_ids):
+    """
+    Alias method sampling
+
+    Example:
+        .. code-block:: python
+            import os
+            import numpy as np
+
+            import paddle
+            paddle.enable_static()
+
+            from paddle.fluid.layers.nn import alias_method
+
+            print('test alias method')
+            place = paddle.CUDAPlace(0)
+            exe = paddle.static.Executor(place)
+
+            sample_num = 100
+            sample_neg_rate = 0.5
+            sample_pos_num = 5
+
+            weight = np.random.dirichlet(np.ones(sample_num),size=1)[0]
+            noids = paddle.static.data(name='noids', shape=[-1], dtype='float32')
+
+            output = alias_method(weight, int(sample_num*sample_neg_rate), noids)
+            paddle.static.Print(output, summarize=-1, message='alias_method output')
+
+            exe.run(paddle.static.default_startup_program())
+
+            if not os.path.exists('pbtxt'):
+                os.makedirs('pbtxt')
+            with open("pbtxt/start_prog.pb", "w") as fout:
+                print >> fout, paddle.static.default_startup_program()
+            with open("pbtxt/main_prog.pb", "w") as fout:
+                print >> fout, paddle.static.default_main_program()
+
+            feed_noids = np.random.randint(sample_num, size=sample_pos_num).astype(np.float32)
+            res, = exe.run(paddle.static.default_main_program(),
+                        feed={'noids':feed_noids},
+                        fetch_list=[output])
+
+            print('res: ', res)
+    """
+    helper = LayerHelper('alias_method', **locals())
+
+    #
+    N = len(weight)
+    accept, alias = [0] * N, [0] * N
+    small, large = [], []
+    weight_ = np.array(weight) * N
+
+    for i, prob in enumerate(weight_):
+        if prob < 1.0:
+            small.append(i)
+        else:
+            large.append(i)
+
+    while small and large:
+        small_idx, large_idx = small.pop(), large.pop()
+        accept[small_idx] = weight_[small_idx]
+        alias[small_idx] = large_idx
+        weight_[large_idx] = weight_[large_idx] - \
+            (1 - weight_[small_idx])
+        if weight_[large_idx] < 1.0:
+            small.append(large_idx)
+        else:
+            large.append(large_idx)
+
+    while large:
+        large_idx = large.pop()
+        accept[large_idx] = 1
+    while small:
+        small_idx = small.pop()
+        accept[small_idx] = 1
+
+    #
+    accept_var = helper.create_global_variable(
+        persistable=True,
+        dtype='float32',
+        shape=[N],
+        name='accept',
+        stop_gradient=True)
+    helper.set_variable_initializer(
+        accept_var, initializer=NumpyArrayInitializer(value=np.array(accept)))
+
+    alias_var = helper.create_global_variable(
+        persistable=True,
+        dtype='float32',
+        shape=[N],
+        name='alias',
+        stop_gradient=True)
+    helper.set_variable_initializer(
+        alias_var, initializer=NumpyArrayInitializer(value=np.array(alias)))
+
+    outs = helper.create_variable_for_type_inference(dtype=no_ids.dtype)
+
+    helper.append_op(
+        type="alias_method",
+        inputs={"Accept": accept_var,
+                "Alias": alias_var,
+                "Noids": no_ids},
+        outputs={"Out": outs},
+        attrs={"Num": num})
+
     return outs

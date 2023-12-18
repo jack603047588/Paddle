@@ -325,7 +325,7 @@ unset(WITH_RECORD_BUILDTIME CACHE)
 
 # PY_VERSION
 if(NOT PY_VERSION)
-  set(PY_VERSION 2.7)
+  set(PY_VERSION 3.7)
 endif()
 set(PYBIND11_PYTHON_VERSION ${PY_VERSION})
 
@@ -499,8 +499,7 @@ if(WITH_DISTRIBUTE)
   endif()
 endif()
 
-include(third_party
-)# download, build, install third_party, Contains about 20+ dependencies
+include(third_party)# download, build, install third_party, Contains about 20+ dependencies
 
 include(flags) # set paddle compile flags
 

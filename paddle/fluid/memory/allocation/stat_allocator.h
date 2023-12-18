@@ -69,7 +69,10 @@ class StatAllocator : public Allocator {
   uint64_t ReleaseImpl(const platform::Place& place) override {
     return underlying_allocator_->Release(place);
   }
-
+  // return real used, total is in alloc
+  size_t GetTotalMemInfo(size_t *total, size_t *available) {
+    return underlying_allocator_->GetTotalMemInfo(total, available);
+  }
  private:
   std::shared_ptr<Allocator> underlying_allocator_;
 };

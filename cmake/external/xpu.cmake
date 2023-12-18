@@ -97,19 +97,22 @@ set(XPU_PACK_DEPENCE_URL
 if (WITH_BOX_PS OR WITH_XPU_KP)
     set(XPU_XRE_DIR_NAME "xre-bdcentos_x86_64")
     set(XPU_XDNN_DIR_NAME "xdnn-bdcentos_x86_64")
-    set(XPU_XCCL_DIR_NAME "xccl-bdcentos_x86_64")
+    set(XPU_XCCL_DIR_NAME "xccl_rdma-bdcentos_x86_64")
     set(XPU_XRE_URL
-        "https://klx-sdk-release-public.su.bcebos.com/xre/release/4.0.22.1/${XPU_XRE_DIR_NAME}.tar.gz"
+        "https://klx-sdk-release-public.su.bcebos.com/xre/release/4.0.28.1/${XPU_XRE_DIR_NAME}.tar.gz"
         CACHE STRING "" FORCE)
     set(XPU_XCCL_URL
-        "https://klx-sdk-release-public.su.bcebos.com/xccl/release/1.0.14/${XPU_XCCL_DIR_NAME}.tar.gz"
+        "https://klx-sdk-release-public.su.bcebos.com/xccl/release/1.1.6.1/${XPU_XCCL_DIR_NAME}.tar.gz"
         CACHE STRING "" FORCE)
     #"https://klx-sdk-release-public.su.bcebos.com/xdnn/release/2.6.0.1/${XPU_XDNN_DIR_NAME}.tar.gz"
     set(XPU_XDNN_URL
-        "https://klx-sdk-release-public.su.bcebos.com/xdnn_train/dev/paddlebox/20230529/${XPU_XDNN_DIR_NAME}.tar.gz"
+        "https://klx-sdk-release-public.su.bcebos.com/xdnn_train/dev/paddlebox/20231212/${XPU_XDNN_DIR_NAME}.tar.gz"
         CACHE STRING "" FORCE)
     set(SCALOPUS_URL
         "https://klx-sdk-release-public.su.bcebos.com/xdnn_train/dev/paddlebox/20230306/scalopus.tar.gz"
+        CACHE STRING "" FORCE)
+    set(XPU_XTDK_URL
+        "https://klx-sdk-release-public.su.bcebos.com/xdnn_train/dev/paddlebox/xtdk/20230914/output.tar.gz"
         CACHE STRING "" FORCE)
 endif()
 
@@ -141,7 +144,8 @@ ExternalProject_Add(
     wget --no-check-certificate ${XPU_PACK_DEPENCE_URL} -O pack_paddle_box_depence.sh && bash pack_paddle_box_depence.sh ${XPU_XRE_URL}
     ${XPU_XRE_DIR_NAME} ${XPU_XDNN_URL} ${XPU_XDNN_DIR_NAME} ${XPU_XCCL_URL}
     ${XPU_XCCL_DIR_NAME} ${XPU_XCTR_URL} ${XPU_XCTR_DIR_NAME} &&
-    wget --no-check-certificate ${SCALOPUS_URL} && tar zxvf scalopus.tar.gz
+    wget --no-check-certificate ${SCALOPUS_URL} && tar zxvf scalopus.tar.gz &&
+    wget --no-check-certificate ${XPU_XTDK_URL} && tar zxvf output.tar.gz
   DOWNLOAD_NO_PROGRESS 1
   UPDATE_COMMAND ""
   CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${XPU_INSTALL_ROOT}

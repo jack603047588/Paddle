@@ -134,6 +134,73 @@ GetUnusedVars(const BlockDesc &block,
   return result;
 }
 
+std::unordered_map<const OperatorBase *, std::vector<std::string>>
+GetUnusedVars2(const BlockDesc &block,
+              const std::vector<std::unique_ptr<OperatorBase>> &ops,
+              const std::vector<std::string> &skip_var_list) {
+  std::unordered_set<std::string> skip_vars(skip_var_list.begin(),
+                                            skip_var_list.end());
+  // get refs
+  std::unordered_map<std::string, size_t> names_ref;
+  for (size_t i = 0; i < ops.size(); ++i) {
+    auto *op = ops[i].get();
+    for (auto &name_pair : op->Inputs()) {
+      for (auto &name : name_pair.second) {
+        if (!VarCanBeDeleted(name, block, skip_vars)) {
+          continue;
+        }
+        auto it = names_ref.find(name);
+        if (it != names_ref.end()) {
+          ++it->second;
+        } else {
+          names_ref[name] = 1;
+        }
+      }
+    }
+    for (auto &name_pair : op->Outputs()) {
+      for (auto &name : name_pair.second) {
+        if (!VarCanBeDeleted(name, block, skip_vars)) {
+          continue;
+        }
+        auto it = names_ref.find(name);
+        if (it != names_ref.end()) {
+          ++it->second;
+        } else {
+          names_ref[name] = 1;
+        }
+      }
+    }
+  }
+  // dec refs
+  std::unordered_map<const OperatorBase *, std::vector<std::string>> result;
+  for (size_t i = 0; i < ops.size(); ++i) {
+    auto *op = ops[i].get();
+    for (auto &name_pair : op->Inputs()) {
+      for (auto &name : name_pair.second) {
+        auto it = names_ref.find(name);
+        if (it == names_ref.end()) {
+          continue;
+        }
+        if (--it->second == 0) {
+          result[op].push_back(name);
+        }
+      }
+    }
+    for (auto &name_pair : op->Outputs()) {
+      for (auto &name : name_pair.second) {
+        auto it = names_ref.find(name);
+        if (it == names_ref.end()) {
+          continue;
+        }
+        if (--it->second == 0) {
+          result[op].push_back(name);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 void DeleteUnusedTensors(const Scope &scope,
                          const std::vector<std::string> &delete_vars,
                          GarbageCollector *gc) {

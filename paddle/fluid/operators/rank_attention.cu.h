@@ -147,5 +147,49 @@ void merge_rank_attention_param_grad(cudaStream_t stream, T* expanded_grad,
       param_grad_row, param_grad_col, ins_rank, ins_num, max_rank, input_col);
 }
 
+// --- input grad ---
+template <typename T>
+__global__ void merge_input_gradient_kernel(
+    T* input_grad_help, int input_grad_help_row, int input_grad_help_col,
+    T* input_grad, int input_grad_row, int input_grad_col,
+    const int* rank_offset, int rank_offset_row, int rank_offset_col,
+    const T* ins_rank, int ins_num, int max_rank, int block_matrix_row) {
+  CUDA_KERNEL_LOOP(tid, input_grad_row * input_grad_col) {
+    int input_grad_row_idx = tid / input_grad_col;
+    int input_grad_col_idx = tid % input_grad_col;
+    int cur_ins_index = input_grad_row_idx;
+    int cur_ins_rank = ins_rank[cur_ins_index];
+    if (cur_ins_rank < 0) {
+      continue;
+    }
+
+    T temp = 0;
+    for (int i = 0; i < max_rank; ++i) {
+      int cur_rank_ins_index = rank_offset[cur_ins_index * rank_offset_col + 2 * i + 2];
+      if (cur_rank_ins_index < 0) {
+        continue;
+      }
+      temp += input_grad_help[cur_rank_ins_index * input_grad_help_col + (cur_ins_rank-1) * input_grad_col + input_grad_col_idx];
+    }
+    input_grad[tid] = temp;
+  }
+}
+
+template <typename T>
+void merge_rank_attention_input_grad(cudaStream_t stream, 
+    T* input_grad_help, int input_grad_help_row, int input_grad_help_col,
+    T* input_grad, int input_grad_row, int input_grad_col,
+    const int* rank_offset, int rank_offset_row, int rank_offset_col, 
+    const T* ins_rank, int ins_num, int max_rank) {
+  int block_matrix_row = max_rank * input_grad_col;
+  merge_input_gradient_kernel<<<GET_BLOCKS(input_grad_row * input_grad_col),
+                                CUDA_NUM_THREADS, 0, stream>>>(
+      input_grad_help, input_grad_help_row, input_grad_help_col,
+      input_grad, input_grad_row, input_grad_col,
+      rank_offset, rank_offset_row, rank_offset_col,
+      ins_rank, ins_num, max_rank, block_matrix_row);
+}
+// ------------------
+
 }  // namespace operators
 }  // namespace paddle

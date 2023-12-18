@@ -121,9 +121,11 @@ class RankAttentionGradOpCUDAKernel : public framework::OpKernel<T> {
     auto *rank_offset = ctx.Input<Tensor>("RankOffset");  // not use data
     auto *param = ctx.Input<Tensor>("RankParam");         // not use data
     auto *input_help = ctx.Input<Tensor>("InputHelp");
+    auto *param_help = ctx.Input<Tensor>("ParamHelp");
     auto *ins_rank = ctx.Input<Tensor>("InsRank");
     auto *dout = ctx.Input<Tensor>(framework::GradVarName("Out"));
     int64_t max_size = ctx.Attr<int>("MaxSize");
+    bool enable_input_bp = ctx.Attr<bool>("EnableInputBp");
 
     auto *drank_para = ctx.Output<Tensor>(framework::GradVarName("RankParam"));
 
@@ -173,6 +175,40 @@ class RankAttentionGradOpCUDAKernel : public framework::OpKernel<T> {
         stream, param_grad_data, ins_num * block_matrix_row, para_col,
         drank_para->data<T>(), para_row, para_col, ins_rank_data, ins_num,
         max_rank, x_fea_dim);
+
+    // ------input back propagation------
+    if (enable_input_bp) {
+        auto rank_offset_row = rank_offset_dims[0];
+        auto rank_offset_col = rank_offset_dims[1];
+        auto *dx = ctx.Output<Tensor>(framework::GradVarName("X"));
+        // initialize x-grad
+        T *dx_ptr = dx->mutable_data<T>(ctx.GetPlace());
+        cudaMemsetAsync(dx_ptr, 0, sizeof(T) * dx->numel(), stream);
+        // copy data
+        Tensor input_grad;
+        input_grad = ctx.AllocateTmpTensor<T, DeviceContext>(
+            {max_ins, block_matrix_row}, dev_ctx);
+        // get data ptr
+        const T *param_help_data = param_help->data<T>();
+        const int *rank_offset_data = rank_offset->data<int>();
+        T *input_grad_data = input_grad.data<T>();
+        cudaMemsetAsync(input_grad_data, 0, sizeof(T) * input_grad.numel(), stream);
+
+        // get param_grad
+        transA = CblasNoTrans;
+        transB = CblasTrans;
+        strideA = para_col;
+        strideB = para_col * block_matrix_row;
+        blas.BatchedGEMM(transA, transB, 1, block_matrix_row, para_col, alpha,
+                        dout->data<T>(), param_help_data, beta, input_grad_data,
+                        ins_num, strideA, strideB);
+        // merge param_grad to get drank_para
+        merge_rank_attention_input_grad(stream, 
+            input_grad_data, ins_num, block_matrix_row,
+            dx->data<T>(), ins_num, x_fea_dim, 
+            rank_offset_data, rank_offset_row, rank_offset_col, 
+            ins_rank_data, ins_num, max_rank);
+    }
   }
 };
 

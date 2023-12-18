@@ -38,7 +38,8 @@ limitations under the License. */
 #include "paddle/fluid/framework/fleet/gloo_wrapper.h"
 #endif
 
-#if defined(PADDLE_WITH_PSLIB) || defined(PADDLE_WITH_PSCORE) || defined(PADDLE_WITH_BOX_PS)
+#if defined(PADDLE_WITH_PSLIB) || defined(PADDLE_WITH_PSCORE) || \
+    defined(PADDLE_WITH_BOX_PS)
 namespace paddle {
 namespace framework {
 
@@ -60,39 +61,77 @@ class BasicAucCalculator {
   // add single data in CPU with LOCK, deprecated
   void add_unlock_data(double pred, int label);
   void add_unlock_data(double pred, int label, float sample_scale);
+  void add_unlock_data_with_float_label(double pred, double label);
+  void add_unlock_data_with_continue_label(double pred, double label);
+  void add_nan_inf_unlock_data(float pred, int label);
   // add batch data
-  void add_data(const float* d_pred, const int64_t* d_label, int batch_size,
-                const paddle::platform::Place& place_pred, const paddle::platform::Place& place_label);
+  void add_data(const float* d_pred,
+                const int64_t* d_label,
+                int batch_size,
+                const paddle::platform::Place& place_pred,
+                const paddle::platform::Place& place_label);
   // add mask data
-  void add_mask_data(const float* d_pred, const int64_t* d_label,
-                     const int64_t* d_mask, int batch_size,
+  void add_mask_data(const float* d_pred,
+                     const int64_t* d_label,
+                     const int64_t* d_mask,
+                     int batch_size,
                      const paddle::platform::Place& place_pred,
                      const paddle::platform::Place& place_label,
                      const paddle::platform::Place& place_mask);
+  // add float data
+  void add_float_mask_data(const float* d_pred,
+                           const float* d_label,
+                           const int64_t* d_mask,
+                           int batch_size,
+                           const paddle::platform::Place& place);
+  // add continue data
+  void add_continue_mask_data(const float* d_pred,
+                              const float* d_label,
+                              const int64_t* d_mask,
+                              int batch_size,
+                              const paddle::platform::Place& place);
   // add sample data
-  void add_sample_data(const float* d_pred, const int64_t* d_label,
-                       const std::vector<float>& d_sample_scale, int batch_size,
+  void add_sample_data(const float* d_pred,
+                       const int64_t* d_label,
+                       const std::vector<float>& d_sample_scale,
+                       int batch_size,
                        const paddle::platform::Place& place_pred,
                        const paddle::platform::Place& place_label);
   // add uid data
-  void add_uid_data(const float* d_pred, const int64_t* d_label,
-                     const int64_t* d_uid, int batch_size,
-                     const paddle::platform::Place& place_pred,
-                     const paddle::platform::Place& place_label,
-                     const paddle::platform::Place& place_uid);
+  void add_uid_data(const float* d_pred,
+                    const int64_t* d_label,
+                    const int64_t* d_uid,
+                    int batch_size,
+                    const paddle::platform::Place& place_pred,
+                    const paddle::platform::Place& place_label,
+                    const paddle::platform::Place& place_uid);
+
+  void add_nan_inf_data(const float* d_pred,
+                        const int64_t* d_label,
+                        int batch_size,
+                        const paddle::platform::Place& place);
+
   void compute();
+  void computeContinueMsg();
   int table_size() const { return _table_size; }
   double bucket_error() const { return _bucket_error; }
   double auc() const { return _auc; }
   double mae() const { return _mae; }
+  double nan_rate() const { return _nan_rate; }
+  double inf_rate() const { return _inf_rate; }
+  double nan_inf_rate() const { return _nan_inf_rate; }
   double actual_ctr() const { return _actual_ctr; }
   double predicted_ctr() const { return _predicted_ctr; }
+  double actual_value() const { return _actual_value; }
+  double predicted_value() const { return _predicted_value; }
   double rmse() const { return _rmse; }
   std::vector<double>& get_negative() { return _table[0]; }
   std::vector<double>& get_postive() { return _table[1]; }
   double& local_abserr() { return _local_abserr; }
   double& local_sqrerr() { return _local_sqrerr; }
   double& local_pred() { return _local_pred; }
+  double& local_label() { return _local_label; }
+  double& local_total_num() { return _local_total_num; }
   // lock and unlock
   std::mutex& table_mutex(void) { return _table_mutex; }
 
@@ -101,29 +140,38 @@ class BasicAucCalculator {
   void add_uid_unlock_data(double pred, int label, uint64_t uid);
   void computeWuAuc();
   WuaucRocData computeSingelUserAuc(const std::vector<WuaucRecord>& records);
+  void computeNanInfMsg();
   double uauc() const { return _uauc; }
   double wuauc() const { return _wuauc; }
   double user_cnt() const { return _user_cnt; }
   double size() const { return _size; }
+  void reset_nan_inf();
 
  private:
-  void cuda_add_data(const paddle::platform::Place& place, const int64_t* label,
-                     const float* pred, int len);
+  void cuda_add_data(const paddle::platform::Place& place,
+                     const int64_t* label,
+                     const float* pred,
+                     int len);
   void cuda_add_mask_data(const paddle::platform::Place& place,
-                          const int64_t* label, const float* pred,
-                          const int64_t* mask, int len);
-  void calculate_bucket_error(const double *neg_table,
-      const double *pos_table);
+                          const int64_t* label,
+                          const float* pred,
+                          const int64_t* mask,
+                          int len);
+  void calculate_bucket_error(const double* neg_table, const double* pos_table);
 
  protected:
   double _local_abserr = 0;
   double _local_sqrerr = 0;
   double _local_pred = 0;
+  double _local_label = 0;
+  double _local_total_num = 0;
   double _auc = 0;
   double _mae = 0;
   double _rmse = 0;
   double _actual_ctr = 0;
   double _predicted_ctr = 0;
+  double _actual_value = 0;
+  double _predicted_value = 0;
   double _bucket_error = 0;
 
   double _size = 0.0;
@@ -131,6 +179,12 @@ class BasicAucCalculator {
   double _uauc = 0;
   double _wuauc = 0;
   std::vector<WuaucRecord> wuauc_records_;
+
+  double _nan_cnt = 0;
+  double _inf_cnt = 0;
+  double _nan_rate = 0;
+  double _inf_rate = 0;
+  double _nan_inf_rate = 0;
 
  private:
   void set_table_size(int table_size) { _table_size = table_size; }

@@ -2008,11 +2008,13 @@ void PadBoxSlotDataset::CheckThreadPool(void) {
   } else {  // shuffle
     VLOG(0) << "pass id=" << pass_id_ << ", use shuffle by random id";
   }
-  VLOG(0) << "pass id=" << pass_id_ << ", shuffle disable: " << disable_shuffle_
-          << ", polling disable: " << disable_polling_;
   used_fea_index_.clear();
   auto feed_obj = reinterpret_cast<SlotPaddleBoxDataFeed*>(readers_[0].get());
   feed_obj->GetUsedSlotIndex(&used_fea_index_);
+
+  VLOG(0) << "pass id=" << pass_id_ << ", shuffle disable: " << disable_shuffle_
+            << ", polling disable: " << disable_polling_
+            << ", slot num=" << used_fea_index_.size();
 
   // read ins thread
   thread_pool_ = GetThreadPool(thread_num_);
@@ -2111,9 +2113,13 @@ void PadBoxSlotDataset::PreLoadIntoDisk(const std::string& path,
     VLOG(3) << "RegisterClientToClientMsgHandler done";
   }
   CHECK(slot_pool_ != nullptr) << "slotrecord pool nullptr";
-  read_ins_ref_ = thread_num_;
+  int read_thread_num = thread_num_;
+  if (disable_random_update_) {
+    read_thread_num = 1;
+  }
+  read_ins_ref_ = read_thread_num;
   CHECK(down_pool_ != nullptr) << "down_pool nullptr";
-  for (int64_t i = 0; i < thread_num_; ++i) {
+  for (int64_t i = 0; i < read_thread_num; ++i) {
     wait_futures_.emplace_back(down_pool_->Run([this, i]() {
       platform::Timer timer;
       timer.Start();
@@ -2781,10 +2787,12 @@ void PadBoxSlotDataset::PrepareTrain(void) {
 
   std::vector<std::pair<int, int>> offset;
   // join or aucrunner mode enable pv
-  if (enable_pv_merge_ && (box_ptr->Phase() == 1 || box_ptr->Phase() == 3 ||
+  if (enable_pv_merge_ && (box_ptr->Phase() & 0x01 == 1 ||
                            box_ptr->Mode() == 1)) {
-    std::shuffle(input_pv_ins_.begin(), input_pv_ins_.end(),
-                 BoxWrapper::LocalRandomEngine());
+    if (!disable_random_update_) {
+      std::shuffle(input_pv_ins_.begin(), input_pv_ins_.end(),
+                  BoxWrapper::LocalRandomEngine());
+    }
     // 分数据到各线程里面
     int batchsize = reinterpret_cast<SlotPaddleBoxDataFeed*>(readers_[0].get())
                         ->GetPvBatchSize();
@@ -2799,6 +2807,35 @@ void PadBoxSlotDataset::PrepareTrain(void) {
       reinterpret_cast<SlotPaddleBoxDataFeed*>(readers_[i % thread_num_].get())
           ->AddBatchOffset(offset[i]);
     }
+#ifdef PADDLE_WITH_XPU_KP
+    using BatchData = std::vector<std::pair<uint64_t*, int>>;
+    VLOG(0) << "PadBoxSlotDataset::PrepareTrain with pv_merge offset size:" << offset.size()
+            << ", thread_num:" << thread_num_;
+    auto data_func = [this, offset] (int batch_idx, BatchData * out_data) {
+      BatchData & batch_data = *out_data;
+      batch_data.clear();
+      int offset_idx = batch_idx * thread_num_;
+      CHECK(offset_idx + thread_num_ <= (int)offset.size())
+              << "offset_idx:" << offset_idx
+              << ", thread_num_:" << thread_num_
+              << "offset.size:" << offset.size();
+      for (int j = 0; j < thread_num_; j++) {
+        auto & offset_pair = offset[offset_idx + j];
+        for (int k = 0; k < offset_pair.second; k++) {
+          auto & pv_ins = input_pv_ins_[offset_pair.first + k]->ads;
+          size_t num = 0;
+          for (auto & rec : pv_ins) {
+            for (auto& idx : used_fea_index_) {
+              uint64_t* feas = rec->slot_uint64_feasigns_.get_values(idx, &num);
+              batch_data.push_back(std::make_pair(feas, num));
+            }
+          }
+        }
+      }
+    };
+    CHECK((int)offset.size() % thread_num_ == 0);
+    box_ptr->SetDataFuncForCacheManager((int)offset.size() / thread_num_, data_func);
+#endif
   } else {
     if (!disable_random_update_) {
         std::shuffle(input_records_.begin(), input_records_.end(),
@@ -2819,36 +2856,34 @@ void PadBoxSlotDataset::PrepareTrain(void) {
       reinterpret_cast<SlotPaddleBoxDataFeed*>(readers_[i % thread_num_].get())
           ->AddBatchOffset(offset[i]);
     }
-  }
-
 #ifdef PADDLE_WITH_XPU_KP
-  // TODO(dingjie02): async call build_batch_fidseq
-  using BatchData = std::vector<std::pair<uint64_t*, int>>;
-  VLOG(0) << "PadBoxSlotDataset::PrepareTrain offset size:" << offset.size()
-          << ", thread_num:" << thread_num_;
-  auto data_func = [this, offset] (int batch_idx, BatchData * out_data) {
-    BatchData & batch_data = *out_data;
-    batch_data.clear();
-    int offset_idx = batch_idx * thread_num_;
-    CHECK(offset_idx + thread_num_ <= (int)offset.size())
-            << "offset_idx:" << offset_idx
-            << ", thread_num_:" << thread_num_
-            << "offset.size:" << offset.size();
-    for (int j = 0; j < thread_num_; j++) {
-      auto & offset_pair = offset[offset_idx + j];
-      for (int k = 0; k < offset_pair.second; k++) {
-        auto & rec = input_records_[offset_pair.first + k];
-        size_t num = 0;
-        for (auto& idx : used_fea_index_) {
-          uint64_t* feas = rec->slot_uint64_feasigns_.get_values(idx, &num);
-          batch_data.push_back(std::make_pair(feas, num));
+    using BatchData = std::vector<std::pair<uint64_t*, int>>;
+    VLOG(0) << "PadBoxSlotDataset::PrepareTrain offset size:" << offset.size()
+            << ", thread_num:" << thread_num_;
+    auto data_func = [this, offset] (int batch_idx, BatchData * out_data) {
+      BatchData & batch_data = *out_data;
+      batch_data.clear();
+      int offset_idx = batch_idx * thread_num_;
+      CHECK(offset_idx + thread_num_ <= (int)offset.size())
+              << "offset_idx:" << offset_idx
+              << ", thread_num_:" << thread_num_
+              << "offset.size:" << offset.size();
+      for (int j = 0; j < thread_num_; j++) {
+        auto & offset_pair = offset[offset_idx + j];
+        for (int k = 0; k < offset_pair.second; k++) {
+          auto & rec = input_records_[offset_pair.first + k];
+          size_t num = 0;
+          for (auto& idx : used_fea_index_) {
+            uint64_t* feas = rec->slot_uint64_feasigns_.get_values(idx, &num);
+            batch_data.push_back(std::make_pair(feas, num));
+          }
         }
       }
-    }
-  };
-  CHECK((int)offset.size() % thread_num_ == 0);
-  box_ptr->SetDataFuncForCacheManager((int)offset.size()/thread_num_, data_func);
+    };
+    CHECK((int)offset.size() % thread_num_ == 0);
+    box_ptr->SetDataFuncForCacheManager((int)offset.size() / thread_num_, data_func);
 #endif
+  }
 }
 
 void PadBoxSlotDataset::UnrollInstance() {

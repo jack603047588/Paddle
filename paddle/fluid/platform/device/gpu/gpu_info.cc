@@ -220,7 +220,7 @@ class RecordedGpuMallocHelper {
   gpuError_t Malloc(void **ptr,
                     size_t size,
                     bool malloc_managed_memory = false) {
-    LockGuardPtr<std::mutex> lock(mtx_);
+//    LockGuardPtr<std::mutex> lock(mtx_);
     if (UNLIKELY(NeedRecord() && cur_size_.load() + size > limit_size_)) {
       return gpuErrorOutOfMemory;
     }

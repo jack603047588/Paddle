@@ -66,6 +66,7 @@ register_unity_group(
   cumsum_op.cc
   cvm_op.cc
   data_norm_op.cc
+  masked_data_norm_op.cc
   deformable_conv_op.cc
   deformable_conv_v1_op.cc
   deformable_psroi_pooling_op.cc
@@ -407,6 +408,7 @@ register_unity_group(
   cumsum_op.cu
   cvm_op.cu
   data_norm_op.cu
+  masked_data_norm_op.cu
   deformable_conv_op.cu
   deformable_conv_v1_op.cu
   dequantize_abs_max_op.cu)

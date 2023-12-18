@@ -70,6 +70,7 @@ class Dataset {
                          const uint16_t sample_slot) {}
   // set file list
   virtual void SetFileList(const std::vector<std::string>& filelist) = 0;
+  virtual void SetIndexFileList(const std::vector<std::string>& filelist) {}
   // set readers' num
   virtual void SetThreadNum(int thread_num) = 0;
   // set workers' num

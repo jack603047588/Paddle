@@ -223,6 +223,9 @@ void Copy<platform::XPUPlace, platform::XPUPlace>(platform::XPUPlace dst_place,
     VLOG(1) << "memcpy XPU_DEVICE_TO_DEVICE size <= 0 (" << num << ")";
     return;
   }
+  if (dst_place == src_place) {
+    platform::SetXPUDeviceId(src_place.device);
+  }
   platform::MemcpySyncD2D(dst, dst_place, src, src_place, num);
 }
 

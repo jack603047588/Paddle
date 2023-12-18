@@ -158,6 +158,10 @@ class LayerObjectHelper(LayerHelperBase):
             raise TypeError(
                 str(act) + " should be unicode or str in %s ", self.name)
 
+        #TODO
+        # act should support dict type.
+        # see LayerHelper.append_activation in paddle/fluid/layer_helper.py
+
         if (use_cudnn is not None) and use_cudnn:
             act['use_cudnn'] = use_cudnn
         use_mkldnn = _global_flags()["FLAGS_use_mkldnn"]

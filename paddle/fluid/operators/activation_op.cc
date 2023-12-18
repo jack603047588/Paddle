@@ -890,12 +890,33 @@ It is recommended to use the defaults for this activation.
   }
 };
 
+class ReluOpMaker : public framework::OpProtoAndCheckerMaker {
+ public:
+  void Make() override {
+    AddInput("X",
+             "Input of Relu operator, an N-D Tensor, with data type float32, float64 or float16.");
+    AddOutput("Out",
+              "Output of Relu operator, a Tensor with shape same as input.");
+    AddAttr<float>("safe",
+                   "QuantSafe relu")
+                   .SetDefault(0.);
+    AddAttr<bool>("use_mkldnn",
+                  "(bool, default false) Only used in mkldnn kernel")
+                  .SetDefault(false)
+                  .AsExtra();
+    AddAttr<bool>("use_cudnn",
+                  "(bool, default false) Only used in cudnn kernel, need install cudnn")
+                  .SetDefault(false)
+                  .AsExtra();
+    AddComment(ReluDoc);
+  }
+};
+
 REGISTER_ACTIVATION_OP_MAKER(Sigmoid, SigmoidDoc);
 REGISTER_ACTIVATION_OP_MAKER(Silu, SiluDoc);
 REGISTER_ACTIVATION_OP_MAKER(LogSigmoid, LogSigmoidDoc);
 REGISTER_ACTIVATION_OP_MAKER(Exp, ExpDoc);
 REGISTER_ACTIVATION_OP_MAKER(Expm1, Expm1Doc);
-REGISTER_ACTIVATION_OP_MAKER(Relu, ReluDoc);
 REGISTER_ACTIVATION_OP_MAKER(Tanh, TanhDoc);
 REGISTER_ACTIVATION_OP_MAKER(TanhShrink, TanhShrinkDoc);
 REGISTER_ACTIVATION_OP_MAKER(Sqrt, SqrtDoc);

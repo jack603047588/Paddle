@@ -1,8 +1,8 @@
 #ifdef PADDLE_WITH_XPU_KP
 #include "paddle/fluid/framework/data_feed_xpu_kernel_helper.h"
-#include "xpu/kernel/cluster_header.h"
-// #include "xpu/kernel/debug.h"
-#include "xpu/kernel/math.h"
+#include "xpu/kernel/xtdk.h"
+#include "xpu/kernel/xtdk_math.h"
+// #include "xpu/kernel/xtdk_io.h"
 
 namespace paddle {
 namespace framework {
@@ -32,64 +32,71 @@ __global__ void CopyRankOffsetKernel(int* mat,
     int nthreads = cluster_num() * ncores;
 
     int col = max_rank * 2 + 1;
-    const int buf_length = 50; // max 2048 float
-    int per_thread_len = roundup_div(ins_num, nthreads);
-    int per_thread_loop_count = roundup_div(per_thread_len, buf_length);
+    const int buf_length = 50;  // max 2048 float
+    const int pv_buf_len = 30;  // 偶数
+    int per_thread_len = roundup_div(pv_num, nthreads);
+    int per_thread_loop_count = roundup_div(per_thread_len, pv_buf_len);
     int per_thread_per_loop_len = roundup_div(per_thread_len, per_thread_loop_count);
 
     __local__ int lm_mat[buf_length * col];
     __local__ int lm_ad_rank[buf_length];
     __local__ int lm_cmatch[buf_length];
-    __local__ int lm_pv_offset[pv_num + 1];
-    __local__ int lm_tmp_pv_cmatch[buf_length];//TODO:
-    __local__ int lm_tmp_pv_rank[buf_length];//TODO:
+    __local__ int lm_pv_offset[pv_buf_len + 1];
 
-    GM2LM(pv_offset, lm_pv_offset, (pv_num+1) * sizeof(int));
     for (int i = thread_id; i < per_thread_loop_count * nthreads; i += nthreads) {
-      int gm_offset = i * per_thread_per_loop_len;
-      if (gm_offset >= ins_num)
-        return;
+        int gm_pvoffset_offset = i * per_thread_per_loop_len;
+        if (gm_pvoffset_offset >= pv_num)
+            return;
 
-      // GM2LM(mat + gm_offset * col, lm_mat, per_thread_per_loop_len * col * sizeof(int));
-      GM2LM(ad_rank + gm_offset, lm_ad_rank, per_thread_per_loop_len * sizeof(int));
-      GM2LM(cmatch + gm_offset, lm_cmatch, per_thread_per_loop_len * sizeof(int));
+        int real_per_thread_per_loop_len = min(per_thread_per_loop_len, pv_num - gm_pvoffset_offset);
+        GM2LM(pv_offset + gm_pvoffset_offset, lm_pv_offset, (real_per_thread_per_loop_len + 1) * sizeof(int));
 
-      int len = min(per_thread_per_loop_len, ins_num - gm_offset);
-      for (int j = 0; j < len; j++) {
-        int rank = -1;
-        if ((lm_cmatch[j] == 222 || lm_cmatch[j] == 223) &&
-            lm_ad_rank[j] <= max_rank &&
-            lm_ad_rank[j] != 0) {
-          rank = lm_ad_rank[j];
-        }
-        lm_mat[j * col] = rank;
-
-        if (rank > 0) {
-          int index = get_pv_head_offset(lm_pv_offset, gm_offset+j, pv_num);
-          int pv_head_offset = lm_pv_offset[index];
-          int ad_num = lm_pv_offset[index+1] - pv_head_offset;
-          GM2LM(ad_rank + pv_head_offset, lm_tmp_pv_rank, ad_num * sizeof(int));//TODO:
-          GM2LM(cmatch + pv_head_offset, lm_tmp_pv_cmatch, ad_num * sizeof(int));//TODO:
-
-          for (int k = 0; k < ad_num; ++k) {
-            // auto cur_ins = pv_ins->ads[k];
-            int fast_rank = -1;
-            if ((lm_tmp_pv_cmatch[k] == 222 || lm_tmp_pv_cmatch[k] == 223) &&
-                lm_tmp_pv_rank[k] <= max_rank &&
-                lm_tmp_pv_rank[k] != 0) {
-              fast_rank = lm_tmp_pv_rank[k];
+        int pv_offset_left_index = 0;
+        int pv_offset_right_index = 0;
+        while (pv_offset_right_index != real_per_thread_per_loop_len) {
+            while (lm_pv_offset[pv_offset_right_index] - lm_pv_offset[pv_offset_left_index] < buf_length
+                    && pv_offset_right_index < real_per_thread_per_loop_len + 1) {
+                pv_offset_right_index++;
             }
+            pv_offset_right_index--;
+            int ad_num = lm_pv_offset[pv_offset_right_index] - lm_pv_offset[pv_offset_left_index];
+            GM2LM(ad_rank + lm_pv_offset[pv_offset_left_index], lm_ad_rank, ad_num * sizeof(int));
+            GM2LM(cmatch + lm_pv_offset[pv_offset_left_index], lm_cmatch, ad_num * sizeof(int));
+            GM2LM(mat + lm_pv_offset[pv_offset_left_index] * col, lm_mat, ad_num * col * sizeof(int));
 
-            if (fast_rank > 0) {
-              int m = fast_rank - 1;
-              lm_mat[j * col + 2 * m + 1] = lm_tmp_pv_rank[k];
-              lm_mat[j * col + 2 * m + 2] = pv_head_offset + k;
+            for (int l = pv_offset_left_index; l < pv_offset_right_index; l++) {
+                int pv_ad_num = lm_pv_offset[l + 1] - lm_pv_offset[l];
+                int lm_offset = lm_pv_offset[l] - lm_pv_offset[0];
+                for (int j = lm_offset; j < lm_offset + pv_ad_num; j++) {
+                    int rank = -1;
+                    if ((lm_cmatch[j] == 222 || lm_cmatch[j] == 223) &&
+                        lm_ad_rank[j] <= max_rank && lm_ad_rank[j] != 0) {
+                        rank = lm_ad_rank[j];
+                    }
+                    lm_mat[j * col] = rank;
+
+                    if (rank > 0) {
+                        for (int k = lm_offset; k < lm_offset + pv_ad_num; ++k) {
+                            // auto cur_ins = pv_ins->ads[k];
+                            int fast_rank = -1;
+                            if ((lm_cmatch[k] == 222 || lm_cmatch[k] == 223) &&
+                                lm_ad_rank[k] <= max_rank && lm_ad_rank[k] != 0) {
+                                fast_rank = lm_ad_rank[k];
+                            }
+
+                            if (fast_rank > 0) {
+                                int m = fast_rank - 1;
+                                lm_mat[j * col + 2 * m + 1] = lm_ad_rank[k];
+                                lm_mat[j * col + 2 * m + 2] = lm_pv_offset[0] + k;
+                            }
+                        }
+                    }
+                }
             }
-          }
+            mfence();
+            LM2GM(lm_mat, mat + lm_pv_offset[pv_offset_left_index] * col, ad_num * col * sizeof(int));
+            pv_offset_left_index = pv_offset_right_index;
         }
-      }
-      mfence();
-      LM2GM(lm_mat, mat + gm_offset * col, per_thread_per_loop_len * col * sizeof(int));
     }
 }
 
@@ -370,7 +377,7 @@ void DataFeedPdboxXpuKernelHelper::CopyRankOffset(const paddle::platform::Place&
     stream = static_cast<platform::XPUDeviceContext*>(dev_ctx)
                 ->x_context()
                 ->xpu_stream;
-    CopyRankOffsetKernel<<<4, 64, stream>>>(dest, ranks, cmatchs, ad_offsets, ins_num, pv_num, max_rank, cols);
+    CopyRankOffsetKernel<<<8, 64, stream>>>(dest, ranks, cmatchs, ad_offsets, pv_num, ins_num, max_rank, cols);
     xpu_wait(stream);
 }
 

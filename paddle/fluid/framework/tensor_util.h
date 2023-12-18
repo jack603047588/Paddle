@@ -604,9 +604,13 @@ inline void SetDeviceID(int dev_id) {
 #endif
 }
 template<typename T>
-inline void SyncCopyH2D(T *dest, const T *src, const size_t len) {
+inline void SyncCopyH2D(T *dest, const T *src, const size_t len, const platform::Place& place) {
 #if defined(PADDLE_WITH_CUDA)
-  cudaMemcpy(dest, src, sizeof(T) * len, cudaMemcpyHostToDevice);
+  auto stream = dynamic_cast<phi::GPUContext*>(
+          platform::DeviceContextPool::Instance().Get(place))
+          ->stream();
+  cudaMemcpyAsync(dest, src, sizeof(T) * len, cudaMemcpyHostToDevice, stream);
+  cudaStreamSynchronize(stream);
 #elif defined(PADDLE_WITH_XPU)
   xpu_memcpy(dest, src, sizeof(T) * len, XPUMemcpyKind::XPU_HOST_TO_DEVICE);
 #else
@@ -614,9 +618,13 @@ inline void SyncCopyH2D(T *dest, const T *src, const size_t len) {
 #endif
 }
 template<typename T>
-inline void SyncCopyD2H(T *dest, const T *src, const size_t len) {
+inline void SyncCopyD2H(T *dest, const T *src, const size_t len, const platform::Place& place) {
 #if defined(PADDLE_WITH_CUDA)
-  cudaMemcpy(dest, src, sizeof(T) * len, cudaMemcpyDeviceToHost);
+  auto stream = dynamic_cast<phi::GPUContext*>(
+	        platform::DeviceContextPool::Instance().Get(place))
+	        ->stream();
+  cudaMemcpyAsync(dest, src, sizeof(T) * len, cudaMemcpyDeviceToHost, stream);
+  cudaStreamSynchronize(stream);
 #elif defined(PADDLE_WITH_XPU)
   xpu_memcpy(dest, src, sizeof(T) * len, XPUMemcpyKind::XPU_DEVICE_TO_HOST);
 #else

@@ -10,7 +10,6 @@ if(TRACE_PROFILE)
   link_directories("${SCALOPUS_PATH}/scalopus/so/scalopus_tracing")
   link_directories("${SCALOPUS_PATH}/scalopus/so/thirdparty/seasocks/src/main/c/")
 endif()
-
 #windows treat symbolic file as a real file, which is different with unix
 #We create a hidden file and compile it instead of origin source file.
 function(windows_symbolic TARGET)

@@ -2725,9 +2725,9 @@ void SlotRecordInMemoryDataFeed::BuildSlotBatchGPU(const int ins_num) {
 
   size_t* d_slot_offsets = reinterpret_cast<size_t*>(pack_->gpu_slot_offsets());
 
-  HostBuffer<size_t>& offsets = pack_->offsets();
+  auto& offsets = pack_->offsets();
   offsets.resize(slot_total_num);
-  HostBuffer<void*>& h_tensor_ptrs = pack_->h_tensor_ptrs();
+  auto& h_tensor_ptrs = pack_->h_tensor_ptrs();
   h_tensor_ptrs.resize(use_slot_size_);
   // alloc gpu memory
   pack_->resize_tensor();
@@ -2818,10 +2818,11 @@ void SlotRecordInMemoryDataFeed::BuildSlotBatchGPU(const int ins_num) {
 //=============================================
 #ifdef PADDLE_WITH_BOX_PS
 static const int MAX_FILE_BUFF = 4 * 1024 * 1024;
+static const int MAX_EXT_LEN = 1024 * 1024;
 static const int PAGE_BLOCK_SIZE = 4096;
 static const int INT_BYTES = sizeof(int);
 BinaryArchiveWriter::BinaryArchiveWriter() : fd_(-1) {
-  capacity_ = MAX_FILE_BUFF + 64 * 1024;
+  capacity_ = MAX_FILE_BUFF + MAX_EXT_LEN;
   CHECK_EQ(0, posix_memalign(reinterpret_cast<void**>(&buff_), PAGE_BLOCK_SIZE,
                              capacity_));
 }
@@ -2901,7 +2902,7 @@ void BinaryArchiveWriter::close(void) {
 class BinaryArchiveReader {
  public:
   BinaryArchiveReader() {
-    capacity_ = MAX_FILE_BUFF + 64 * 1024;
+    capacity_ = MAX_FILE_BUFF + MAX_EXT_LEN;
     CHECK_EQ(0, posix_memalign(reinterpret_cast<void**>(&buff_),
                                PAGE_BLOCK_SIZE, capacity_));
   }
@@ -3126,6 +3127,7 @@ void SlotPaddleBoxDataFeed::GetUsedSlotIndex(
   if (used_slot_name != nullptr) {
     used_slot_name->clear();
   }
+  const std::vector<int>& slot_ids = boxps_ptr->GetSlotVector();
   for (int i = 0; i < use_slot_size_; ++i) {
     auto& info = used_slots_info_[i];
     if (info.type[0] != 'u') {
@@ -3134,14 +3136,20 @@ void SlotPaddleBoxDataFeed::GetUsedSlotIndex(
     if (!is_slot_values(info.slot)) {
       continue;
     }
-    if (slot_name_omited_in_feedpass_.find(info.slot) ==
+    if (slot_name_omited_in_feedpass_.find(info.slot) !=
         slot_name_omited_in_feedpass_.end()) {
-      if (used_slot_index != nullptr) {
-          used_slot_index->push_back(info.slot_value_idx);
-      }
-      if (used_slot_name != nullptr) {
-          used_slot_name->push_back(info.slot);
-      }
+      continue;
+    }
+    int slot_id = atoi(info.slot.c_str());
+    if (slot_ids.end() ==
+        std::find(slot_ids.begin(), slot_ids.end(), slot_id)){
+      continue;
+    }
+    if (used_slot_index != nullptr) {
+        used_slot_index->push_back(info.slot_value_idx);
+    }
+    if (used_slot_name != nullptr) {
+        used_slot_name->push_back(info.slot);
     }
   }
 }
@@ -3166,8 +3174,6 @@ int SlotPaddleBoxDataFeed::Next() {
   }
 #ifdef PADDLE_WITH_XPU_KP
   auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
-  // box_ptr->PrepareNextBatch(this->place_.GetDeviceId());
-  
   std::future<int> prepare_next_batch_rt = std::async(std::launch::async, [this]() {
     auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
     return box_ptr->PrepareNextBatch(this->place_.GetDeviceId());
@@ -3181,10 +3187,14 @@ int SlotPaddleBoxDataFeed::Next() {
       batch_timer_.Resume();
       PutToFeedPvVec(&pv_ins_[batch.first], this->batch_size_);
       batch_timer_.Pause();
-
     } else {
       VLOG(3) << "finish reading, batch size zero, thread_id=" << thread_id_;
     }
+#ifdef PADDLE_WITH_XPU_KP
+    CHECK(prepare_next_batch_rt.get() == 0);
+#endif
+    next_timer_.Pause();
+
     return this->batch_size_;
   } else {
     this->batch_size_ = batch.second;
@@ -3198,7 +3208,9 @@ int SlotPaddleBoxDataFeed::Next() {
     }
 #endif
     batch_timer_.Pause();
+#ifdef PADDLE_WITH_XPU_KP
     CHECK(prepare_next_batch_rt.get() == 0);
+#endif
     next_timer_.Pause();
 
     return this->batch_size_;
@@ -3465,12 +3477,19 @@ void SlotPaddleBoxDataFeed::BuildSlotBatchGPU(const int ins_num) {
   int64_t uint64_offset = 0;
   offset_timer_.Pause();
 
+#if defined(PADDLE_WITH_CUDA)
+  auto stream = dynamic_cast<phi::GPUContext*>(
+            platform::DeviceContextPool::Instance().Get(this->place_))
+            ->stream();
+#endif
+
   copy_timer_.Resume();
   // copy index
 #if defined(PADDLE_WITH_CUDA)
-  CUDA_CHECK(cudaMemcpy(offsets.data(), d_slot_offsets,
+  CUDA_CHECK(cudaMemcpyAsync(offsets.data(), d_slot_offsets,
                         slot_total_num * sizeof(size_t),
-                        cudaMemcpyDeviceToHost));
+                        cudaMemcpyDeviceToHost, stream));
+  cudaStreamSynchronize(stream);
 #elif defined(PADDLE_WITH_XPU_KP)
   platform::MemcpySyncD2H(offsets.data(), d_slot_offsets, slot_total_num * sizeof(size_t), this->place_);
 #endif
@@ -3540,9 +3559,9 @@ void SlotPaddleBoxDataFeed::BuildSlotBatchGPU(const int ins_num) {
   trans_timer_.Resume();
   void** dest_gpu_p = reinterpret_cast<void**>(pack_->slot_buf_ptr());
 #if defined(PADDLE_WITH_CUDA)
-  CUDA_CHECK(cudaMemcpy(dest_gpu_p, h_tensor_ptrs.data(),
+  CUDA_CHECK(cudaMemcpyAsync(dest_gpu_p, h_tensor_ptrs.data(),
                         use_slot_size_ * sizeof(void*),
-                        cudaMemcpyHostToDevice));
+                        cudaMemcpyHostToDevice, stream));
 
   CopyForTensor(
       ins_num, use_slot_size_, dest_gpu_p, pack_->gpu_slot_offsets(),
@@ -3576,6 +3595,7 @@ int SlotPaddleBoxDataFeed::GetCurrentPhase() {
     return box_ptr->Phase();
   }
 }
+
 void SlotPaddleBoxDataFeed::GetRankOffsetGPU(const int pv_num,
                                              const int ins_num) {
 #if defined(PADDLE_WITH_CUDA) && defined(_LINUX) || defined(PADDLE_WITH_XPU_KP) && !defined(CPU_DATA_FEED)
@@ -3590,6 +3610,15 @@ void SlotPaddleBoxDataFeed::GetRankOffsetGPU(const int pv_num,
                  value.d_ad_offset.data<int>(), col);
 
 #elif defined(PADDLE_WITH_XPU_KP)
+  auto dev_ctx = platform::DeviceContextPool::Instance().Get(this->place_);
+  auto ctx = static_cast<platform::XPUDeviceContext*>(dev_ctx)->x_context();
+  int r = xpu::constant<int>(ctx, tensor_ptr, rank_offset_->numel(), 0);
+  PADDLE_ENFORCE_EQ(r,
+                    XPU_SUCCESS,
+                    platform::errors::External(
+                        "XPU constant kernel return wrong value[%d %s]",
+                        r,
+                        XPUAPIErrorMsg[r]));
   DataFeedPdboxXpuKernelHelper::CopyRankOffset(this->place_, tensor_ptr, ins_num, pv_num, max_rank,
                                                value.d_rank.data<int>(), value.d_cmatch.data<int>(),
                                                value.d_ad_offset.data<int>(), col);

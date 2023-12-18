@@ -777,10 +777,18 @@ struct Expm1GradFunctor : public BaseActivationFunctor<T> {
 // relu(x) = max(x, 0)
 template <typename T>
 struct ReluCPUFunctor : public BaseActivationFunctor<T> {
+  float safe_ {0.0};
+  typename BaseActivationFunctor<T>::AttrPair GetAttrs() {
+    return {{"safe", &safe_}};
+  }
   template <typename Device, typename X, typename Out>
   void operator()(Device d, X x, Out out) const {
-    out.device(d) = x.unaryExpr([] HOSTDEVICE(T v) {
-      return v > static_cast<T>(0) ? v : static_cast<T>(0);
+    out.device(d) = x.unaryExpr([this] HOSTDEVICE(T v) {
+      if (safe_) {
+        return v * (v > static_cast<T>(0) ? static_cast<T>(1) : static_cast<T>(0));
+      } else {
+        return v > static_cast<T>(0) ? v : static_cast<T>(0);
+      }
     });
   }
 };
@@ -2094,11 +2102,21 @@ struct SquareGradGradFunctor : public BaseActivationFunctor<T> {
 #if defined(__NVCC__) || defined(__HIPCC__) || defined(__xpu__)
 template <typename T>
 struct CudaReluFunctor : public BaseActivationFunctor<T> {
+  // the data type is limited to float ...
+  float safe_ {0.0};
   T zero = static_cast<T>(0.0f);
+
+  typename BaseActivationFunctor<T>::AttrPair GetAttrs() {
+    return {{"safe", &safe_}};
+  }
 
   // relu(x) = max(x, 0)
   __device__ __forceinline__ T operator()(const T x) const {
-    return x > zero ? x : zero;
+    if (safe_) {
+      return x * (x > static_cast<T>(0) ? static_cast<T>(1) : static_cast<T>(0));
+    } else {
+      return x > zero ? x : zero;
+    }
   }
 };
 
@@ -2146,7 +2164,11 @@ template <typename T>
 struct CudaExpFunctor : public BaseActivationFunctor<T> {
   // exp(x) = expf(x)
   __device__ __forceinline__ T operator()(const T x) const {
+#if defined(__xpu__)
+    return static_cast<T>(exp(static_cast<float>(x)));
+#else
     return static_cast<T>(expf(static_cast<float>(x)));
+#endif
   }
 };
 
