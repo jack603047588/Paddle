@@ -620,16 +620,17 @@ std::set<std::string> used_slot_set;
           cpu_tensors[i].ShareDataWith(tensor);
         }
 #ifdef PADDLE_WITH_XPU_KP
-    auto & fid2sign_map = paddle::framework::BoxWrapper::GetInstance()->GetFid2SginMap();
-    if (used_slot_set.find(field) != used_slot_set.end()) {
+    auto fid2sign_map_ptr = paddle::framework::BoxWrapper::GetInstance()->GetFid2SginMap();
+    if (used_slot_set.find(field) != used_slot_set.end() \
+        && fid2sign_map_ptr != nullptr && fid2sign_map_ptr->size() > 0) {
       auto t_dtype = framework::TransToProtoVarType(cpu_tensors[i].dtype());
       if (t_dtype == proto::VarType::INT64) {
         size_t numel = cpu_tensors[i].numel();
         int64_t * slot_data = cpu_tensors[i].data<int64_t>();
         for (size_t j = 0; j < numel; ++j) {
           uint64_t fid = static_cast<uint64_t>(slot_data[j]);
-          PADDLE_ENFORCE_LT(fid, fid2sign_map.size());
-          uint64_t sign = fid2sign_map[fid];
+          PADDLE_ENFORCE_LT(fid, fid2sign_map_ptr->size());
+          uint64_t sign = (*fid2sign_map_ptr)[fid];
           PADDLE_ENFORCE(sign > 0 || (sign == 0 && fid == 0),
               platform::errors::PreconditionNotMet(
               "sign can only be 0 when fid is 0, fid:%llu, sign:%llu",
