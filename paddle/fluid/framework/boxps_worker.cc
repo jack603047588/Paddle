@@ -48,6 +48,9 @@ PADDLE_DEFINE_EXPORTED_bool(padbox_enable_gc, false, "enable paddlebox gc");
 namespace paddle {
 namespace framework {
 
+std::atomic<int> BoxPSWorker::shape_check_count_(16);
+std::atomic<bool> BoxPSWorker::shape_check_flag_(true);
+
 BoxPSAsynDenseTable::BoxPSAsynDenseTable(const int device_num)
     : device_num_(device_num) {
   int buffer_size = device_num * 4;  // magic number
@@ -481,6 +484,7 @@ int64_t BoxPSWorker::AllocParamTensorAsync() {
 }
 
 void BoxPSWorker::CreateDeviceResource(const ProgramDesc& main_prog) {
+  // program_ & ops_
   program_.reset(new ProgramDesc(main_prog));
   auto& block = program_->Block(0);
   for (auto& op_desc : block.AllOps()) {
@@ -495,6 +499,7 @@ void BoxPSWorker::CreateDeviceResource(const ProgramDesc& main_prog) {
     }
     ops_.push_back(OpRegistry::CreateOp(*op_desc));
   }
+
   // skip dump fields
   if (need_dump_field_ && dump_fields_ != nullptr) {
     skip_vars_.insert(
@@ -643,6 +648,67 @@ void BoxPSWorker::CreateDeviceResource(const ProgramDesc& main_prog) {
               << ", unused vars op count=" << unused_vars_.size();
     }
   }
+  // async_infershape
+  if (scope_num_ != 1) {
+    // auto& block = main_prog.Block(0);
+    for (int i = 0; i < scope_num_; i++) {
+      auto thread_tmp = &thread_scope_->NewScope();
+      thread_scope_vec_.push_back(thread_tmp);
+    }
+    for (auto& scope : thread_scope_vec_) {
+      for (auto& var : sorted_var) {
+        std::string name = var->Name();
+        if (!var->Persistable()) {
+          auto* ptr = scope->Var(var->Name());
+          InitializeVariable(ptr, var->GetType());
+        }
+      }
+    }
+    for (auto& op : ops_) {
+      op->SetIsRuntimeInferShape(true);
+    }
+    // reusing memory
+    auto input_names = device_reader_->GetInputVarNames();
+    std::set<std::string> input_names_set(input_names.begin(), input_names.end());
+    for (auto& scope : thread_scope_vec_) {
+      std::vector<Variable*> need_reuse;
+      // for (auto& var : block.AllVars()) {
+      for (auto& var : sorted_var) {
+        std::string name = var->Name();
+        // VLOG(0) << "var_name:" << name << ", persistable:" << var->Persistable() << ", type:" << var->GetType();
+        if (!var->Persistable()) {
+          if (input_names_set.find(var->Name()) != input_names_set.end()) {
+            continue;
+          }
+          auto* ptr = scope->FindLocalVar(var->Name());
+          PADDLE_ENFORCE_NE(ptr, nullptr,
+                phi::errors::NotFound("The var %s is not found.", var->Name()));
+          need_reuse.push_back(ptr);
+        }
+      }
+      need_reuse_var_vec_[scope] = std::move(need_reuse);
+    }
+    {
+      need_reuse_var_.clear();
+      // for (auto& var : block.AllVars()) {
+      for (auto& var : sorted_var) {
+        std::string name = var->Name();
+        if (!var->Persistable()) {
+          if (input_names_set.find(var->Name()) != input_names_set.end()) {
+            continue;
+          }
+          auto* ptr = thread_scope_->FindLocalVar(var->Name());
+          PADDLE_ENFORCE_NE(ptr, nullptr,
+                phi::errors::NotFound("The var %s is not found.", var->Name()));
+          need_reuse_var_.push_back(ptr);
+        }
+      }
+    }
+
+
+
+
+  }
 }
 void BoxPSWorker::SyncParam(void) {
   if (param_sync_.numel() == 0 ||
@@ -721,6 +787,7 @@ int BoxPSWorker::PackBatchTask(void) {
 /**
  * @brief add auc monitor
  */
+// check
 inline void AddAucMonitor(const Scope* scope, const platform::Place& place) {
   auto box_ptr = BoxWrapper::GetInstance();
   auto& metric_list = box_ptr->GetMetricList();
@@ -733,6 +800,121 @@ inline void AddAucMonitor(const Scope* scope, const platform::Place& place) {
   }
 }
 
+BoxPSWorker::~BoxPSWorker() {
+  stop_token_.store(true);
+  for (auto& thread : task_threads_) {
+    if (thread.joinable()) {
+        thread.join();
+    }
+  }
+}
+
+void BoxPSWorker::BindingDataFeedMemory() {
+  // if (scope_num_ == 1) {
+  //   this->HogwildWorker::BindingDataFeedMemory();
+  // } else {
+    for (auto& scope : thread_scope_vec_) {
+      device_reader_->AssignFeedVar(*scope);
+    }
+  // }
+}
+
+int BoxPSWorker::OpRunAndShapeCheck(int opid,
+                                    OperatorBase& op,
+                                    const Scope& scope,
+                                    const platform::Place& place) {
+    // if (shape_check_flag_.load()) {
+ /*
+      // VLOG(0) << "Begin OpRunAndShapeCheck... "
+      //       << shape_check_count_.load();
+      // if (shape_check_count_.fetch_sub(1) <= 0) {
+      //   shape_check_flag_ = false;
+      // }
+      // before op run
+      InferShapeCheckData check_data;
+      auto& pre_dims = check_data.pre_dims;
+      auto& pre_lods = check_data.pre_lods;
+      auto& after_dims = check_data.after_dims;
+      auto& after_lods = check_data.after_lods;
+      RuntimeContext ctx(op.Inputs(), op.Outputs(), scope);
+      RuntimeInferShapeContext infer_shape_ctx(op, ctx);
+      auto outnames = op.Outputs();
+      for (auto& var_name_item : outnames) {
+        pre_dims.push_back(infer_shape_ctx.GetOutputsDim(var_name_item.first));
+        pre_lods.push_back(infer_shape_ctx.GetOutputsLod(var_name_item.first));
+      }
+
+      // op run
+      op.Run(scope, place);
+
+      // after op run
+      for (auto& var_name_item : outnames) {
+        after_dims.push_back(infer_shape_ctx.GetOutputsDim(var_name_item.first));
+        after_lods.push_back(infer_shape_ctx.GetOutputsLod(var_name_item.first));
+      }
+      // auto& op_name = op.Info().Proto().type();
+      // CHECK(pre_dims.size() == after_dims.size())
+      //           << "dims error, op name:" << op.Info().Proto().type();
+
+      std::string op_name = "unknow_op";
+      if (op.Info().HasOpProtoAndChecker()) {
+        op_name = op.Info().Proto().type();
+      }
+
+      #define SHAPE_CHECK_EQ(__VAL0, __VAL1, IDX) \
+          PADDLE_ENFORCE_EQ(__VAL0, __VAL1, platform::errors::Fatal( \
+                              "Shape check dims/lods error, op name: %s, idx:%s", op_name, IDX))
+      SHAPE_CHECK_EQ(pre_dims.size(), after_dims.size(), -1);
+
+      for (size_t i = 0; i < pre_dims.size(); i++) {
+        // CHECK(pre_dims[i].size() == after_dims[i].size())
+        //           << "dims error, op name:" << op.Info().Proto().type();
+        SHAPE_CHECK_EQ(pre_dims[i].size(), after_dims[i].size(), i);
+        for (size_t j = 0; j < pre_dims[i].size(); j++) {
+          // CHECK(pre_dims[i][j] == after_dims[i][j])
+          //           << "dims error, op name:" << op.Info().Proto().type();
+          SHAPE_CHECK_EQ(pre_dims[i][j], after_dims[i][j], j);
+        }
+      }
+
+      SHAPE_CHECK_EQ(pre_lods.size(), after_lods.size(), -1);
+
+      // CHECK(pre_lods.size() == after_lods.size())
+      //   << "lods error, op name:" << op.Info().Proto().type();
+
+      for (size_t i = 0; i < pre_lods.size(); i++) {
+        // CHECK(pre_lods[i].size() == after_lods[i].size())
+        //   << "lods error, op name:" << op.Info().Proto().type();
+        SHAPE_CHECK_EQ(pre_lods[i].size(), after_lods[i].size(), i);
+        for (size_t j = 0; j < pre_lods[i].size(); j++) {
+          auto& x = pre_lods[i][j];
+          auto& y = after_lods[i][j];
+          // CHECK(x.size() == y.size())
+          //     << "lods error, op name:" << op.Info().Proto().type();
+          SHAPE_CHECK_EQ(x.size(), y.size(), opid);
+          for (size_t i = 0; i < x.size(); i++) {
+            const auto &x_level = x[i];
+            const auto &y_level = y[i];
+            // CHECK(x_level.size() == y_level.size())
+            //     << "lods error, op name:" << op.Info().Proto().type();
+            SHAPE_CHECK_EQ(x_level.size(), y_level.size(), i);
+            for (size_t j = 0; j < x_level.size(); j++) {
+               // CHECK(x_level[j] == y_level[j])
+               //    << "lods error, op name:" << op.Info().Proto().type();
+               SHAPE_CHECK_EQ(x_level[j], y_level[j], j);
+            }
+          }
+        }
+      }
+      #undef SHAPE_CHECK_EQ
+*/
+    // } else {
+       op.Run(scope, place);
+    // }
+    return 0;
+}
+
+
 void BoxPSWorker::TrainFiles() {
   VLOG(3) << "begin gpubox_worker TrainFiles";
   platform::Timer timer;
@@ -743,6 +925,7 @@ void BoxPSWorker::TrainFiles() {
   if (device_reader_ != nullptr) {
     device_reader_->Start();
   }
+  int cur_batch = 0;
   int step = 0;
   SetDeviceID(device_id_);
 
@@ -752,22 +935,174 @@ void BoxPSWorker::TrainFiles() {
     gc = CreateGarbageCollector(place_, max_memory_size);
   }
 
-  while ((batch_size = PackBatchTask()) > 0) {
+  // ==== async infershape ====
+  pack_is_end_.store(false);
+  if (scope_num_ != 1) {
+    for (size_t i = 0; i < thread_scope_vec_.size(); i++) {
+      TaskData task;
+      task.scope = thread_scope_vec_[i];
+      free_task_queue_.Push(task);
+    }
+    // std::atomic<int>* thread_run = new std::atomic<int>(task_threads_);
+    thread_count_.store(task_threads_num_);
+    task_threads_.reserve(task_threads_num_);
+     write_idx_.store(0);
+    for (int i = 0; i < task_threads_num_; i++) {
+      task_threads_.emplace_back(std::thread([this]() -> void {
+        while (true) {
+          auto pack = device_reader_->get_pack(nullptr);
+          if (pack == nullptr) {
+            int thread_num = thread_count_.fetch_sub(1);
+            if (thread_num == 1) {
+              pack_is_end_.store(true);
+            }
+            return;
+          }
+          auto task = free_task_queue_.Pop();
+          task.pack = pack;
+          task.ins_num = pack->ins_num();
+          device_reader_->PackToScope(task.pack, task.scope);
+          for (size_t ii = 0; ii < ops_.size(); ii++) {
+            auto& op = ops_[ii];
+            // bool need_skip = false;
+            // for (auto t = 0u; t < skip_ops_.size(); ++t) {
+            //   if (op->Type().find(skip_ops_[t]) != std::string::npos) {
+            //     need_skip = true;
+            //     break;
+            //   }
+            // }
+            // if (!need_skip) {
+            op->RuntimeInferShape(ii, device_id_, *task.scope);
+            // }
+          }
+          while(true) {
+            if (write_idx_.load() == pack->batch_offset_index) {
+              using_task_queue_.Push(task);
+              write_idx_.store(pack->batch_offset_index + 1);
+              break;
+            }
+            usleep(200);
+          }
+        }
+      }));
+    }
+  }
+
+  while (true) {
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_START("PackBatchTask cost", dev_ctx_->Wait());
+#endif
+    auto thread_scope = thread_scope_;
+    TaskData cur_task;
+    if (scope_num_ == 1) {
+      // cur_batch = device_reader_->Next();
+      cur_batch = PackBatchTask();
+    } else {
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_START("get task", dev_ctx_->Wait());
+#endif
+      while (true) {
+        if (using_task_queue_.Size() != 0) {
+          cur_task = using_task_queue_.Pop();
+          cur_batch = cur_task.ins_num;
+          break;
+        }
+        bool is_end = pack_is_end_.load();
+        if (is_end) {
+          if (using_task_queue_.Size() == 0) {
+            cur_batch = 0;
+            break;
+          }
+        }
+        std::this_thread::sleep_for(
+          std::chrono::microseconds(100));
+      }
+
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_END("get task", dev_ctx_->Wait());
+#endif
+
+      if (cur_batch <= 0) {
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_END("PackBatchTask cost", dev_ctx_->Wait());
+#endif
+        break;
+      }
+
+      // thread_scope = cur_task.scope;
+
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_START("PrepareNextBatch", dev_ctx_->Wait());
+#endif
+      device_reader_->PrepareNextBatch();
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_END("PrepareNextBatch", dev_ctx_->Wait());
+#endif
+
+
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_START("share buffer", dev_ctx_->Wait());
+#endif
+      thread_scope = cur_task.scope;
+      // tensor share buffer
+      std::vector<Variable*>& cur_scope_vars = need_reuse_var_vec_[thread_scope];
+      PADDLE_ENFORCE_EQ(cur_scope_vars.size(), need_reuse_var_.size(),
+                        platform::errors::Fatal(
+                              "reuse vars size must be same."));
+      for (size_t i = 0; i < need_reuse_var_.size(); i++) {
+        Variable* child = cur_scope_vars[i];
+        Variable* parent = need_reuse_var_[i];
+        if (child->IsType<LoDTensor>()) {
+          child->GetMutable<LoDTensor>()->ShareBufferWith(*(parent->GetMutable<LoDTensor>()));
+        }
+      }
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_END("share buffer", dev_ctx_->Wait());
+#endif
+    }
+#if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+    TRACE_SCOPE_END("PackBatchTask cost", dev_ctx_->Wait());
+#endif
+
+    // if (cur_batch <= 0) {
+    //   break;
+    // }
+
+/*
+    if (shape_check_flag_.load()) {
+      VLOG(0) << "Begin OpRunAndShapeCheck... "
+            << shape_check_count_.load();
+      if (shape_check_count_.fetch_sub(1) <= 0) {
+        VLOG(0) << "End OpRunAndShapeCheck."
+            << shape_check_count_.load();
+        shape_check_flag_ = false;
+      }
+    }
+*/
+
+    // ==== async infershape ====
+
+  // while ((batch_size = PackBatchTask()) > 0) {
     VLOG(2) << "[" << device_id_
             << "]begin running ops, batch size:" << batch_size
             << ", batch id=" << step;
 
+    // dense_table_ & sync_mode_ >0 先不适配
     if (dense_table_) {
       dense_table_->PullDense(place_, &param_async_);
     }
-
+    int kk =0;
     for (auto& op : ops_) {
-      op->Run(*thread_scope_, place_);
+      // op->Run(*thread_scope_, place_);
+      OpRunAndShapeCheck(kk, *op, *thread_scope, place_);
+      kk++;
       if (gc) {
-        DeleteUnusedTensors(*thread_scope_, op.get(), unused_vars_, gc.get());
+        // DeleteUnusedTensors(*thread_scope_, op.get(), unused_vars_, gc.get());
+        DeleteUnusedTensors(*thread_scope, op.get(), unused_vars_, gc.get());
       }
     }
 
+    // dense_table_ & sync_mode_ >0 先不适配
     if (dense_table_) {
       dense_table_->PushDense(place_, &grad_async_);
     } else if (sync_mode_ > 0) {
@@ -780,7 +1115,8 @@ void BoxPSWorker::TrainFiles() {
     if (FLAGS_check_nan_inf) {
       // check nan result
       if (framework::details::CheckBatchNanOrInfRet(place_)) {
-        framework::details::DumpAllScope(*thread_scope_, place_);
+        // framework::details::DumpAllScope(*thread_scope_, place_);
+        framework::details::DumpAllScope(*thread_scope, place_);
         PADDLE_ENFORCE(false,
                        "ERROR: check INF and NAN, device id=%d, batch id=%d",
                        device_id_,
@@ -788,21 +1124,45 @@ void BoxPSWorker::TrainFiles() {
       }
     }
 #endif
-    AddAucMonitor(thread_scope_, place_);
+    // AddAucMonitor(thread_scope_, place_);
+    AddAucMonitor(thread_scope, place_);
 
     accum_num += batch_size;
     if (gc) {
-      gc->DirectClearCallback([this]() { thread_scope_->DropKids(); });
+      // gc->DirectClearCallback([this]() { thread_scope_->DropKids(); });
+      gc->DirectClearCallback([this, &thread_scope]() { thread_scope->DropKids(); });
     } else {
-      thread_scope_->DropKids();
+      // thread_scope_->DropKids();
+      thread_scope->DropKids();
     }
     ++step;
+
+    // async infershape
+    if (scope_num_ != 1) {
+      std::vector<Variable*>& cur_scope_vars = need_reuse_var_vec_[thread_scope];
+      PADDLE_ENFORCE_EQ(cur_scope_vars.size(), need_reuse_var_.size(),
+                        platform::errors::Fatal(
+                              "reuse vars size must be same."));
+      for (size_t i = 0; i < need_reuse_var_.size(); i++) {
+        Variable* child = cur_scope_vars[i];
+        Variable* parent = need_reuse_var_[i];
+        if (child->IsType<LoDTensor>()) {
+          parent->GetMutable<LoDTensor>()->ShareBufferWith(*(child->GetMutable<LoDTensor>()));
+        }
+      }
+      device_reader_->get_pack(cur_task.pack);
+      free_task_queue_.Push(cur_task);
+    }
+
   }
   // sync param step
   if (sync_mode_ > 0) {
     SyncParam();
   }
   dev_ctx_->Wait();
+  // for (auto& scope : thread_scope_vec_) {
+  //   scope->DropKids();
+  // }
   thread_scope_->DropKids();
 
   timer.Pause();

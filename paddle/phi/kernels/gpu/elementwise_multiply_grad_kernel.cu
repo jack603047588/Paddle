@@ -33,7 +33,7 @@ void MultiplyGradKernel(const Context& dev_ctx,
                         int axis,
                         DenseTensor* dx,
                         DenseTensor* dy) {
-  funcs::ElementwiseGradPreProcess(dout, dx);
+  // funcs::ElementwiseGradPreProcess(dout, dx);
   ElementwiseMulGrad<T>(dev_ctx, x, y, dout, dx, dy, axis);
 }
 

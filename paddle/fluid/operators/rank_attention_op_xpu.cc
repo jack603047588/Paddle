@@ -35,6 +35,8 @@ class RankAttention2XPUKernel : public framework::OpKernel<T> {
         int max_rank = ctx.Attr<int>("MaxRank");
         auto* Out = ctx.Output<Tensor>("Out");
 
+        // VLOG(0) << "[debug]rank_attention2, rank_offset_dtype:" << rank_offset->dtype();
+
         // check dims
         auto x_dims = X->dims();
         auto ins_num = x_dims[0];

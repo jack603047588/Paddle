@@ -853,11 +853,11 @@ class BoxPSAsynDenseTable {
 class BoxPSWorker : public DeviceWorker {
  public:
   BoxPSWorker() {}
-  ~BoxPSWorker() override {}
+  ~BoxPSWorker() override;
 
   void Initialize(const TrainerDesc& desc) override;
 
-  void BindingDataFeedMemory() override {}
+  void BindingDataFeedMemory() override;
   void CreateDeviceResource(const ProgramDesc& main_prog) override;
 
   void TrainFiles() override;
@@ -877,6 +877,19 @@ class BoxPSWorker : public DeviceWorker {
   void SetAsyncParamName(const std::set<std::string>& async_param_name) {
     async_param_name_ = async_param_name;
   }
+
+  struct InferShapeCheckData {
+    std::vector<std::vector<DDim>> pre_dims;
+    std::vector<std::vector<LoD>> pre_lods;
+    std::vector<std::vector<DDim>> after_dims;
+    std::vector<std::vector<LoD>> after_lods;
+  };
+
+  int OpRunAndShapeCheck(int opid, OperatorBase& op,
+                          const Scope& scope,
+                          const platform::Place& place);
+
+
 
  protected:
   int PackBatchTask(void);
@@ -908,6 +921,32 @@ class BoxPSWorker : public DeviceWorker {
   std::vector<std::string> skip_vars_;
   std::unordered_map<const OperatorBase*, std::vector<std::string>>
       unused_vars_;
+
+  // async infershape
+  int task_threads_num_ {2};
+  // int scope_num_ {task_threads_num_ + 1};
+  int scope_num_ {2};
+  std::atomic<int> thread_count_ {0};
+  std::atomic<int> write_idx_ {0};
+  std::atomic<bool> stop_token_ {false};
+  std::atomic<bool> pack_is_end_ {false};
+  std::vector<std::thread> task_threads_;
+  std::vector<Scope*> thread_scope_vec_;
+  std::map<Scope*, std::vector<Variable*>> need_reuse_var_vec_;
+  std::vector<Variable*> need_reuse_var_;
+
+  struct TaskData {
+    int ins_num;
+    Scope* scope;
+    MiniBatchGpuPack* pack;
+  };
+  paddle::framework::BlockingQueue<TaskData> free_task_queue_;
+  paddle::framework::BlockingQueue<TaskData> using_task_queue_;
+
+  static std::atomic<int> shape_check_count_;
+  static std::atomic<bool> shape_check_flag_;
+
+
 };
 #endif
 

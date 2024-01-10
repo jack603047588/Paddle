@@ -196,6 +196,7 @@ void BoxPSTrainer::InitTrainerEnv(const ProgramDesc& main_program,
       this_worker->SetAsyncParamName(async_param_name);
     }
     this_worker->CreateDeviceResource(main_program);
+    this_worker->BindingDataFeedMemory();
     //    CopyParameters(*root_scope_, i);
   }
 }

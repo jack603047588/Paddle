@@ -691,12 +691,223 @@ bool OpSupportGPU(const std::string& op_type) {
   return false;
 }
 
-class RuntimeInferShapeContext : public InferShapeContext {
- public:
-  RuntimeInferShapeContext(const OperatorBase& op, const RuntimeContext& ctx)
-      : op_(op), ctx_(ctx) {}
+struct OperatorWithKernel::CacheImpl {
+  explicit CacheImpl(phi::KernelContext* kernel_ctx,
+                     RuntimeInferShapeContext* infer_shape_ctx)
+      : kernel_ctx_(kernel_ctx), infer_shape_ctx_(infer_shape_ctx) {}
 
-  bool HasInput(const std::string& name) const override {
+  phi::KernelContext* getKernelContext() { return kernel_ctx_.get(); }
+  RuntimeInferShapeContext* getRuntimeInferShapeContext() {
+    return infer_shape_ctx_.get();
+  }
+
+ private:
+  std::unique_ptr<phi::KernelContext> kernel_ctx_;
+  std::unique_ptr<RuntimeInferShapeContext> infer_shape_ctx_;
+};
+
+proto::VarType::Type RuntimeInferShapeContext::GetVarType(Variable* var) const {
+  return ToVarType(var->Type());
+}
+
+
+std::vector<proto::VarType::Type> RuntimeInferShapeContext::GetVarTypes(
+      const std::vector<Variable*>& vars) const {
+    std::vector<proto::VarType::Type> retv;
+    retv.resize(vars.size());
+    std::transform(vars.begin(),
+                   vars.end(),
+                   retv.begin(),
+                   std::bind(std::mem_fn(&RuntimeInferShapeContext::GetVarType),
+                             this,
+                             std::placeholders::_1));
+    return retv;
+  }
+
+  std::vector<proto::VarType::Type> RuntimeInferShapeContext::GetInputsVarType(
+      const std::string& name) const {
+    return GetVarTypes(InputVars(name));
+  }
+
+
+  DDim RuntimeInferShapeContext::GetDim(Variable* var) const {
+    PADDLE_ENFORCE_NOT_NULL(
+        var, platform::errors::InvalidArgument("Input variable is nullptr."));
+    if (var->IsType<LoDTensor>()) {
+      return var->Get<LoDTensor>().dims();
+    } else if (var->IsType<phi::SelectedRows>()) {
+      return var->Get<phi::SelectedRows>().GetCompleteDims();
+    } else {
+      PADDLE_THROW(platform::errors::InvalidArgument(
+          "Only LoDTensor or SelectedRows support 'GetDim', but input "
+          "Variable's type is %s.",
+          ToTypeName(var->Type())));
+    }
+  }
+
+  std::vector<DDim>RuntimeInferShapeContext::GetDims(const std::vector<Variable*>& vars) const {
+    std::vector<DDim> ret;
+    ret.reserve(vars.size());
+    std::transform(vars.begin(),
+                   vars.end(),
+                   std::back_inserter(ret),
+                   [this](Variable* var) { return this->GetDim(var); });
+    return ret;
+  }
+
+  std::vector<DDim> RuntimeInferShapeContext::GetRepeatedDims(const std::string& name) const {
+    PADDLE_THROW(platform::errors::PreconditionNotMet(
+        "GetRepeatedDims method only ban be used in compile time."));
+  }
+
+  void RuntimeInferShapeContext::SetDim(Variable* var, const DDim& dim) {
+    if (var->IsType<LoDTensor>()) {
+      var->GetMutable<LoDTensor>()->Resize(dim);
+    } else if (var->IsType<phi::SelectedRows>()) {
+      var->GetMutable<phi::SelectedRows>()->set_height(dim[0]);
+    } else {
+      PADDLE_THROW(platform::errors::Unimplemented(
+          "Variable type error, expect LoDTensor or SelectedRows, but received "
+          "(%s).",
+          ToTypeName(var->Type())));
+    }
+  }
+
+  void RuntimeInferShapeContext::SetDims(const std::vector<Variable*>& vars,
+               const std::vector<DDim>& dims) {
+    size_t length = vars.size();
+    PADDLE_ENFORCE_EQ(length,
+                      dims.size(),
+                      platform::errors::InvalidArgument(
+                          "The number of input variables do not match the "
+                          "number of input dimensions, the number of variables "
+                          "is %zu, the number of dimensions is %zu.",
+                          length,
+                          dims.size()));
+    for (size_t i = 0; i < length; ++i) {
+      if (vars[i] == nullptr) {
+        continue;
+      }
+      SetDim(vars[i], dims[i]);
+    }
+  }
+
+  void RuntimeInferShapeContext::SetRepeatedDims(const std::string& name,
+                       const std::vector<DDim>& dims) {
+    PADDLE_THROW(platform::errors::PreconditionNotMet(
+        "SetRepeatedDims method only can be used in compile time."));
+  }
+
+  const std::vector<Variable*>& RuntimeInferShapeContext::InputVars(const std::string& name) const {
+    auto it = ctx_.inputs.find(name);
+    PADDLE_ENFORCE_NE(
+        it,
+        ctx_.inputs.end(),
+        platform::errors::NotFound(
+            "Operator (%s) does not have the input (%s).", op_.Type(), name));
+    return it->second;
+  }
+
+  const std::vector<Variable*>& RuntimeInferShapeContext::OutputVars(const std::string& name) const {
+    auto it = ctx_.outputs.find(name);
+    PADDLE_ENFORCE_NE(
+        it,
+        ctx_.outputs.end(),
+        platform::errors::NotFound(
+            "Operator (%s) does not have the outputs (%s).", op_.Type(), name));
+    return it->second;
+  }
+
+  DDim RuntimeInferShapeContext::GetInputDim(const std::string& name) const {
+    const std::vector<Variable*>& vars = InputVars(name);
+    PADDLE_ENFORCE_EQ(
+        vars.size(),
+        1UL,
+        platform::errors::InvalidArgument(
+            "Input(%s) should hold one element, but now it holds %zu elements.",
+            name,
+            vars.size()));
+    return this->GetDim(vars[0]);
+  }
+
+  std::vector<DDim> RuntimeInferShapeContext::GetInputsDim(const std::string& name) const {
+    const std::vector<Variable*>& vars = InputVars(name);
+    return GetDims(vars);
+  }
+
+  proto::VarType::Type RuntimeInferShapeContext::GetInputVarType(const std::string& name) const {
+    return GetVarType(InputVars(name).at(0));
+  }
+
+  std::vector<proto::VarType::Type> RuntimeInferShapeContext::GetOutputsVarType(
+      const std::string& name) const {
+    return GetVarTypes(OutputVars(name));
+  }
+
+  void RuntimeInferShapeContext::SetOutputDim(const std::string& name, const DDim& dim) {
+    auto& vars = OutputVars(name);
+    PADDLE_ENFORCE_EQ(
+        vars.size(),
+        1UL,
+        platform::errors::InvalidArgument("Output(%s) should hold one element, "
+                                          "but now it holds %zu elements.",
+                                          name,
+                                          vars.size()));
+    SetDim(vars[0], dim);
+  }
+  
+void RuntimeInferShapeContext::SetOutputsDim(const std::string& name,
+                     const std::vector<DDim>& dims) {
+    auto& vars = OutputVars(name);
+    SetDims(vars, dims);
+  }
+
+  // TODO(paddle-dev): Can this be template?
+  paddle::small_vector<InferShapeVarPtr, phi::kInputSmallVectorSize>
+  RuntimeInferShapeContext::GetInputVarPtrs(const std::string& name) const {
+    const std::vector<Variable*>& vars = InputVars(name);
+    paddle::small_vector<InferShapeVarPtr, phi::kInputSmallVectorSize> res;
+    res.reserve(vars.size());
+    res.insert(res.begin(), vars.begin(), vars.end());
+    return res;
+  }
+
+  paddle::small_vector<InferShapeVarPtr, phi::kOutputSmallVectorSize>
+  RuntimeInferShapeContext::GetOutputVarPtrs(const std::string& name) const {
+    const std::vector<Variable*>& vars = OutputVars(name);
+    paddle::small_vector<InferShapeVarPtr, phi::kOutputSmallVectorSize> res;
+    res.reserve(vars.size());
+    res.insert(res.begin(), vars.begin(), vars.end());
+    return res;
+  }
+
+  bool RuntimeInferShapeContext::IsRunMKLDNNKernel() const {
+    try {
+      auto& op_with_kernel = dynamic_cast<const OperatorWithKernel&>(op_);
+      return ((op_with_kernel.kernel_type()) &&
+              (op_with_kernel.kernel_type()->data_layout_ ==
+               framework::DataLayout::kMKLDNN));
+    } catch (const std::bad_cast& exp) {
+      return false;
+    }
+  }
+
+  int32_t RuntimeInferShapeContext::GetLoDLevel(const std::string& in, size_t i) const {
+    PADDLE_THROW(platform::errors::PreconditionNotMet(
+        "GetLoDLevel is only used in compile time. The calculation of "
+        "output's actual lod is different among operators so that should be "
+        "set in the runtime kernel."));
+  }
+  void RuntimeInferShapeContext::SetLoDLevel(const std::string& out,
+                   int32_t lod_level,
+                   size_t j) const {
+    PADDLE_THROW(platform::errors::PreconditionNotMet(
+        "SetLoDLevel is only used in compile time. The calculation of "
+        "output's actual lod is different among operators so that should be "
+        "set in the runtime kernel."));
+  }
+  bool RuntimeInferShapeContext::IsRuntime() const { return true; }
+  bool RuntimeInferShapeContext::HasInput(const std::string& name) const {
     // has only one input
     const auto& ins = ctx_.inputs;
     auto it = ins.find(name);
@@ -712,8 +923,7 @@ class RuntimeInferShapeContext : public InferShapeContext {
             "Input %s should not contain more than one inputs.", name));
     return in[0] != nullptr;
   }
-
-  bool HasOutput(const std::string& name) const override {
+  bool RuntimeInferShapeContext::HasOutput(const std::string& name) const {
     // has only one output
     const auto& outs = ctx_.outputs;
     auto it = outs.find(name);
@@ -731,12 +941,10 @@ class RuntimeInferShapeContext : public InferShapeContext {
             "Output %s should not contain more than one outputs.", name));
     return out[0] != nullptr;
   }
-
-  bool HasAttr(const std::string& name) const override {
+  bool RuntimeInferShapeContext::HasAttr(const std::string& name) const {
     return op_.HasAttr(name);
   }
-
-  bool HasInputs(const std::string& name) const override {
+  bool RuntimeInferShapeContext::HasInputs(const std::string& name) const {
     const auto& ins = ctx_.inputs;
     auto it = ins.find(name);
     if (it == ins.end() || it->second.empty()) {
@@ -749,9 +957,8 @@ class RuntimeInferShapeContext : public InferShapeContext {
     }
     return true;
   }
-
-  bool HasOutputs(const std::string& name,
-                  bool allow_null = false) const override {
+  bool RuntimeInferShapeContext::HasOutputs(const std::string& name,
+                  bool allow_null) const {
     const auto& outs = ctx_.outputs;
     auto it = outs.find(name);
     if (it == outs.end() || it->second.empty()) {
@@ -769,18 +976,16 @@ class RuntimeInferShapeContext : public InferShapeContext {
       return true;
     }
   }
+  AttrReader RuntimeInferShapeContext::Attrs() const { return AttrReader(op_.Attrs()); }
 
-  AttrReader Attrs() const override { return AttrReader(op_.Attrs()); }
-
-  std::vector<std::string> Inputs(const std::string& name) const override {
+  std::vector<std::string> RuntimeInferShapeContext::Inputs(const std::string& name) const {
     return op_.Inputs(name);
   }
 
-  std::vector<std::string> Outputs(const std::string& name) const override {
+  std::vector<std::string> RuntimeInferShapeContext::Outputs(const std::string& name) const {
     return op_.Outputs(name);
   }
-
-  std::string GetInputNameByIdx(size_t idx) const override {
+  std::string RuntimeInferShapeContext::GetInputNameByIdx(size_t idx) const {
     auto& op_proto =
         paddle::framework::OpInfoMap::Instance().Get(op_.Type()).proto_;
     PADDLE_ENFORCE_LT(idx,
@@ -793,8 +998,7 @@ class RuntimeInferShapeContext : public InferShapeContext {
                           op_proto->inputs().size()));
     return op_proto->inputs()[idx].name();
   }
-
-  std::string GetOutputNameByIdx(size_t idx) const override {
+  std::string RuntimeInferShapeContext::GetOutputNameByIdx(size_t idx) const {
     auto& op_proto =
         paddle::framework::OpInfoMap::Instance().Get(op_.Type()).proto_;
     PADDLE_ENFORCE_LT(
@@ -809,10 +1013,10 @@ class RuntimeInferShapeContext : public InferShapeContext {
     return op_proto->outputs()[idx].name();
   }
 
-  void ShareDim(const std::string& in,
+  void RuntimeInferShapeContext::ShareDim(const std::string& in,
                 const std::string& out,
-                size_t i = 0,
-                size_t j = 0) override {
+                size_t i,
+                size_t j) {
     auto in_it = ctx_.inputs.find(in);
     auto out_it = ctx_.outputs.find(out);
     PADDLE_ENFORCE_NE(
@@ -866,8 +1070,8 @@ class RuntimeInferShapeContext : public InferShapeContext {
     }
   }
 
-  void ShareAllLoD(const std::string& in,
-                   const std::string& out) const override {
+void RuntimeInferShapeContext::ShareAllLoD(const std::string& in,
+                   const std::string& out) const {
     auto in_it = ctx_.inputs.find(in);
     auto out_it = ctx_.outputs.find(out);
     PADDLE_ENFORCE_NE(in_it,
@@ -916,10 +1120,74 @@ class RuntimeInferShapeContext : public InferShapeContext {
     }
   }
 
-  void ShareLoD(const std::string& in,
-                const std::string& out,
-                size_t i = 0,
-                size_t j = 0) const override {
+
+void RuntimeInferShapeContext::SetOutputsLoD(const std::string& in, const std::string& out,
+                                             std::vector<framework::LoD>& lods) {
+    auto in_it = ctx_.inputs.find(in);
+    auto out_it = ctx_.outputs.find(out);
+    PADDLE_ENFORCE_NE(in_it,
+                       ctx_.inputs.end(),
+                       platform::errors::NotFound(
+                           "Input [%s] found error in Op [%s]", in, op_.Type()));
+    PADDLE_ENFORCE_NE(
+        out_it,
+        ctx_.outputs.end(),
+        platform::errors::NotFound(
+            "Output [%s] found error in Op [%s]", out, op_.Type()));
+
+    auto& in_var_list = in_it->second;
+    auto& out_var_list = out_it->second;
+
+    PADDLE_ENFORCE_EQ(
+         in_var_list.size(),
+         out_var_list.size(),
+         platform::errors::PreconditionNotMet(
+             "Op [%s]: Input var size should be equal with output var size",
+             op_.Type()));
+    PADDLE_ENFORCE_EQ(
+         lods.size(),
+         out_var_list.size(),
+         platform::errors::PreconditionNotMet(
+             "Op [%s]: Input var size should be equal with output var size",
+             op_.Type()));
+
+    auto& out_var_names = op_.Outputs(out);
+
+    for (size_t i = 0; i < out_var_list.size(); ++i) {
+      if (out_var_names[i] == framework::kEmptyVarName) {
+        continue;
+      }
+
+      Variable* in_var = in_var_list[i];
+      if (!in_var->IsType<LoDTensor>()) return;
+      Variable* out_var = out_var_list[i];
+      PADDLE_ENFORCE_EQ(out_var->IsType<LoDTensor>(),
+                        true,
+                        platform::errors::PreconditionNotMet(
+                            "The %d-th output of Output(%s) must be LoDTensor.",
+                            i,
+                            out_var_names[i]));
+      auto& in_tensor = in_var->Get<LoDTensor>();
+      auto* out_tensor = out_var->GetMutable<LoDTensor>();
+      framework::LoD& out_lod = lods[i];
+      /// out_tensor->set_lod(in_tensor.lod());
+      out_tensor->set_lod(out_lod);
+#ifdef PADDLE_WITH_MKLDNN
+       if (in_tensor.layout() != DataLayout::kMKLDNN)
+#endif
+         out_tensor->set_layout(in_tensor.layout());
+    }
+  }
+
+
+
+
+
+
+  void RuntimeInferShapeContext::ShareLoD(const std::string& in,
+                                          const std::string& out,
+                                          size_t i,
+                                          size_t j) const {
     auto in_it = ctx_.inputs.find(in);
     auto out_it = ctx_.outputs.find(out);
     PADDLE_ENFORCE_NE(
@@ -978,236 +1246,40 @@ class RuntimeInferShapeContext : public InferShapeContext {
       out_tensor->set_layout(in_tensor.layout());
   }
 
-  int32_t GetLoDLevel(const std::string& in, size_t i = 0) const override {
-    PADDLE_THROW(platform::errors::PreconditionNotMet(
-        "GetLoDLevel is only used in compile time. The calculation of "
-        "output's actual lod is different among operators so that should be "
-        "set in the runtime kernel."));
-  }
-
-  void SetLoDLevel(const std::string& out,
-                   int32_t lod_level,
-                   size_t j = 0) const override {
-    PADDLE_THROW(platform::errors::PreconditionNotMet(
-        "SetLoDLevel is only used in compile time. The calculation of "
-        "output's actual lod is different among operators so that should be "
-        "set in the runtime kernel."));
-  }
-
-  bool IsRuntime() const override { return true; }
-
-  bool IsRunMKLDNNKernel() const override {
-    try {
-      auto& op_with_kernel = dynamic_cast<const OperatorWithKernel&>(op_);
-      return ((op_with_kernel.kernel_type()) &&
-              (op_with_kernel.kernel_type()->data_layout_ ==
-               framework::DataLayout::kMKLDNN));
-    } catch (const std::bad_cast& exp) {
-      return false;
-    }
-  }
-
-  // TODO(paddle-dev): Can this be template?
-  paddle::small_vector<InferShapeVarPtr, phi::kInputSmallVectorSize>
-  GetInputVarPtrs(const std::string& name) const override {
-    const std::vector<Variable*>& vars = InputVars(name);
-    paddle::small_vector<InferShapeVarPtr, phi::kInputSmallVectorSize> res;
-    res.reserve(vars.size());
-    res.insert(res.begin(), vars.begin(), vars.end());
-    return res;
-  }
-
-  paddle::small_vector<InferShapeVarPtr, phi::kOutputSmallVectorSize>
-  GetOutputVarPtrs(const std::string& name) const override {
-    const std::vector<Variable*>& vars = OutputVars(name);
-    paddle::small_vector<InferShapeVarPtr, phi::kOutputSmallVectorSize> res;
-    res.reserve(vars.size());
-    res.insert(res.begin(), vars.begin(), vars.end());
-    return res;
-  }
-
-  DDim GetInputDim(const std::string& name) const override {
-    const std::vector<Variable*>& vars = InputVars(name);
-    PADDLE_ENFORCE_EQ(
-        vars.size(),
-        1UL,
-        platform::errors::InvalidArgument(
-            "Input(%s) should hold one element, but now it holds %zu elements.",
-            name,
-            vars.size()));
-    return this->GetDim(vars[0]);
-  }
-
-  std::vector<DDim> GetInputsDim(const std::string& name) const override {
-    const std::vector<Variable*>& vars = InputVars(name);
-    return GetDims(vars);
-  }
-
-  proto::VarType::Type GetInputVarType(const std::string& name) const override {
-    return GetVarType(InputVars(name).at(0));
-  }
-
-  std::vector<proto::VarType::Type> GetInputsVarType(
-      const std::string& name) const override {
-    return GetVarTypes(InputVars(name));
-  }
-
-  std::vector<proto::VarType::Type> GetOutputsVarType(
-      const std::string& name) const override {
-    return GetVarTypes(OutputVars(name));
-  }
-
-  void SetOutputDim(const std::string& name, const DDim& dim) override {
-    auto& vars = OutputVars(name);
-    PADDLE_ENFORCE_EQ(
-        vars.size(),
-        1UL,
-        platform::errors::InvalidArgument("Output(%s) should hold one element, "
-                                          "but now it holds %zu elements.",
-                                          name,
-                                          vars.size()));
-    SetDim(vars[0], dim);
-  }
-
-  void SetOutputsDim(const std::string& name,
-                     const std::vector<DDim>& dims) override {
-    auto& vars = OutputVars(name);
-    SetDims(vars, dims);
-  }
-
-  const phi::ArgumentMappingFn* GetPhiArgumentMappingFn() const override {
+  const phi::ArgumentMappingFn* RuntimeInferShapeContext::GetPhiArgumentMappingFn() const {
     return phi::OpUtilsMap::Instance().GetArgumentMappingFn(op_.Type());
   }
 
-  const phi::KernelSignature* GetPhiDefaultKernelSignature() const override {
+  const phi::KernelSignature* RuntimeInferShapeContext::GetPhiDefaultKernelSignature() const {
     return &phi::DefaultKernelSignatureMap::Instance().Get(op_.Type());
   }
 
- protected:
-  DDim GetDim(Variable* var) const {
-    PADDLE_ENFORCE_NOT_NULL(
-        var, platform::errors::InvalidArgument("Input variable is nullptr."));
-    if (var->IsType<LoDTensor>()) {
-      return var->Get<LoDTensor>().dims();
-    } else if (var->IsType<phi::SelectedRows>()) {
-      return var->Get<phi::SelectedRows>().GetCompleteDims();
-    } else {
-      PADDLE_THROW(platform::errors::InvalidArgument(
-          "Only LoDTensor or SelectedRows support 'GetDim', but input "
-          "Variable's type is %s.",
-          ToTypeName(var->Type())));
-    }
-  }
-
-  std::vector<DDim> GetDims(const std::vector<Variable*>& vars) const {
-    std::vector<DDim> ret;
-    ret.reserve(vars.size());
-    std::transform(vars.begin(),
-                   vars.end(),
-                   std::back_inserter(ret),
-                   [this](Variable* var) { return this->GetDim(var); });
-    return ret;
-  }
-
-  std::vector<DDim> GetRepeatedDims(const std::string& name) const override {
-    PADDLE_THROW(platform::errors::PreconditionNotMet(
-        "GetRepeatedDims method only ban be used in compile time."));
-  }
-
-  void SetDim(Variable* var, const DDim& dim) {
-    if (var->IsType<LoDTensor>()) {
-      var->GetMutable<LoDTensor>()->Resize(dim);
-    } else if (var->IsType<phi::SelectedRows>()) {
-      var->GetMutable<phi::SelectedRows>()->set_height(dim[0]);
-    } else {
-      PADDLE_THROW(platform::errors::Unimplemented(
-          "Variable type error, expect LoDTensor or SelectedRows, but received "
-          "(%s).",
-          ToTypeName(var->Type())));
-    }
-  }
-
-  void SetDims(const std::vector<Variable*>& vars,
-               const std::vector<DDim>& dims) {
-    size_t length = vars.size();
-    PADDLE_ENFORCE_EQ(length,
-                      dims.size(),
-                      platform::errors::InvalidArgument(
-                          "The number of input variables do not match the "
-                          "number of input dimensions, the number of variables "
-                          "is %zu, the number of dimensions is %zu.",
-                          length,
-                          dims.size()));
-    for (size_t i = 0; i < length; ++i) {
-      if (vars[i] == nullptr) {
-        continue;
+std::vector<DDim> RuntimeInferShapeContext::GetOutputsDim(const std::string& name) const {
+  const std::vector<Variable*>& vars = OutputVars(name);
+  std::vector<Variable*> vars_res;
+  for (auto var : vars) {
+      if (var != nullptr) {
+          vars_res.push_back(var);
       }
-      SetDim(vars[i], dims[i]);
+  }
+  return GetDims(vars_res);
+}
+
+// async infershape
+std::vector<LoD> RuntimeInferShapeContext::GetOutputsLod(const std::string& out) const {
+  auto out_it = ctx_.outputs.find(out);
+  auto& out_var_list = out_it->second;
+
+  std::vector<LoD> ret;
+  for (size_t i = 0; i < out_var_list.size(); ++i) {
+    Variable* out_var = out_var_list[i];
+    if (out_var != nullptr) {
+      auto* out_tensor = out_var->GetMutable<LoDTensor>();
+      ret.push_back(out_tensor->lod());
     }
   }
-
-  void SetRepeatedDims(const std::string& name,
-                       const std::vector<DDim>& dims) override {
-    PADDLE_THROW(platform::errors::PreconditionNotMet(
-        "SetRepeatedDims method only can be used in compile time."));
-  }
-
-  std::vector<proto::VarType::Type> GetVarTypes(
-      const std::vector<Variable*>& vars) const {
-    std::vector<proto::VarType::Type> retv;
-    retv.resize(vars.size());
-    std::transform(vars.begin(),
-                   vars.end(),
-                   retv.begin(),
-                   std::bind(std::mem_fn(&RuntimeInferShapeContext::GetVarType),
-                             this,
-                             std::placeholders::_1));
-    return retv;
-  }
-
-  proto::VarType::Type GetVarType(Variable* var) const {
-    return ToVarType(var->Type());
-  }
-
- private:
-  const std::vector<Variable*>& InputVars(const std::string& name) const {
-    auto it = ctx_.inputs.find(name);
-    PADDLE_ENFORCE_NE(
-        it,
-        ctx_.inputs.end(),
-        platform::errors::NotFound(
-            "Operator (%s) does not have the input (%s).", op_.Type(), name));
-    return it->second;
-  }
-
-  const std::vector<Variable*>& OutputVars(const std::string& name) const {
-    auto it = ctx_.outputs.find(name);
-    PADDLE_ENFORCE_NE(
-        it,
-        ctx_.outputs.end(),
-        platform::errors::NotFound(
-            "Operator (%s) does not have the outputs (%s).", op_.Type(), name));
-    return it->second;
-  }
-
-  const OperatorBase& op_;
-  const RuntimeContext& ctx_;
-};
-
-struct OperatorWithKernel::CacheImpl {
-  explicit CacheImpl(phi::KernelContext* kernel_ctx,
-                     RuntimeInferShapeContext* infer_shape_ctx)
-      : kernel_ctx_(kernel_ctx), infer_shape_ctx_(infer_shape_ctx) {}
-
-  phi::KernelContext* getKernelContext() { return kernel_ctx_.get(); }
-  RuntimeInferShapeContext* getRuntimeInferShapeContext() {
-    return infer_shape_ctx_.get();
-  }
-
- private:
-  std::unique_ptr<phi::KernelContext> kernel_ctx_;
-  std::unique_ptr<RuntimeInferShapeContext> infer_shape_ctx_;
-};
+  return ret;
+}
 
 static void CheckTensorNANOrInf(const std::string& op_type,
                                 const std::string& name,
@@ -1414,6 +1486,13 @@ void OperatorWithKernel::RuntimeInferShape(const Scope& scope,
   this->Info().infer_shape_(&infer_shape_ctx);
 }
 
+void OperatorWithKernel::RuntimeInferShape(const int ii, const int dev_id, const Scope& scope) const {
+  RuntimeContext ctx(Inputs(), Outputs(), scope);
+  RuntimeInferShapeContext infer_shape_ctx(*this, ctx);
+  // VLOG(0) << "type:" << this->Type() << ", devid:" << dev_id << ",op_id:" << ii;
+  this->Info().infer_shape_(&infer_shape_ctx);
+}
+
 void OperatorWithKernel::RunImpl(const Scope& scope,
                                  const platform::Place& place) const {
   // To reduce the elapsed time of HasAttr, we use bool variable to record the
@@ -1423,6 +1502,12 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
   if (!all_kernels_must_compute_runtime_shape_ &&
       HasAttr(kAllKernelsMustComputeRuntimeShape))
     all_kernels_must_compute_runtime_shape_ = true;
+
+   // VLOG(0) << "[debug run op]op:" << this->Type() << ", enable_cache_runtime_ctx:" << enable_cache_runtime_context_
+   //         << ", all_kernels_must_compute_runtime_shape:" << all_kernels_must_compute_runtime_shape_
+   //         << ", run_phi_kernel_:" << run_phi_kernel_ << ", imple_!=null:" << (impl_ != nullptr)
+   //         << ", need_prepare_data:" << need_prepare_data_ << ", need_prepare_phi_data:" << need_prepare_phi_data_;
+  
   const Scope* cur_scope = &scope;
   if (!enable_cache_runtime_context_) {
     RuntimeContext ctx(Inputs(), Outputs(), scope);
@@ -1672,12 +1757,12 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
                                        platform::EventRole::kInnerOp);
     if (need_prepare_data_) {
 #if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
-      TRACE_SCOPE_START("PrepareData",);
+      TRACE_SCOPE_START("PrepareData", dev_ctx->Wait());
 #endif
       transfer_scope = PrepareData(
           scope, *kernel_type_, &transfered_inplace_vars, runtime_ctx);
 #if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
-      TRACE_SCOPE_END("PrepareData",);//wait?
+      TRACE_SCOPE_END("PrepareData", dev_ctx->Wait());//wait?
 #endif
     }
   }
@@ -1690,8 +1775,15 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
                                        platform::TracerEventType::OperatorInner,
                                        1,
                                        platform::EventRole::kInnerOp);
+
+// #if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+//       TRACE_SCOPE_START("RuntimeInferShape",);
+// #endif
     RuntimeInferShapeContext infer_shape_ctx(*this, *runtime_ctx);
     this->Info().infer_shape_(&infer_shape_ctx);
+// #if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+//       TRACE_SCOPE_END("RuntimeInferShape",);
+// #endif
     record_event.End();
     platform::RecordOpInfoSupplement(
         Type(), Attrs(), infer_shape_ctx, *runtime_ctx);
@@ -1708,6 +1800,9 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
                                        platform::TracerEventType::OperatorInner,
                                        1,
                                        platform::EventRole::kInnerOp);
+// #if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+//        TRACE_SCOPE_START("compute", dev_ctx->Wait());
+// #endif
     if (run_phi_kernel_) {
       phi::KernelContext pt_kernel_context;
       if (enable_cache_runtime_context_ && !need_prepare_phi_data_ &&
@@ -1728,6 +1823,9 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
       (*kernel_func_)(
           ExecutionContext(*this, exec_scope, *dev_ctx, *runtime_ctx));
     }
+// #if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
+//        TRACE_SCOPE_END("compute", dev_ctx->Wait());
+// #endif
   }
 
   if (!transfered_inplace_vars.empty()) {

@@ -31,7 +31,7 @@ void MultiplyGradKernel(const Context& dev_ctx,
                         int axis,
                         DenseTensor* dx,
                         DenseTensor* dy) {
-  funcs::ElementwiseGradPreProcess(dout, dx);
+  // funcs::ElementwiseGradPreProcess(dout, dx);
   auto* out = &dout;  // out is not necessary
   phi::funcs::ElemwiseGradCompute<Context, T, MulGradDX<T>, MulGradDY<T>>(
       dev_ctx, x, y, *out, dout, axis, dx, dy, MulGradDX<T>(), MulGradDY<T>());

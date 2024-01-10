@@ -43,7 +43,9 @@ class FusedSeqpoolCVMOp : public framework::OperatorWithKernel {
     const int cvm_offset = ctx->Attrs().Get<int>("cvm_offset");
     const size_t num_inputs = ins_dims.size();
     std::vector<framework::DDim> outs_dims;
+    std::vector<framework::LoD> outs_lods;
     outs_dims.resize(num_inputs);
+    outs_lods.resize(num_inputs);
     bool use_cvm = ctx->Attrs().Get<bool>("use_cvm");
     bool clk_filter = ctx->Attrs().Get<bool>("clk_filter");
     const int embed_thres_size = ctx->Attrs().Get<int>("embed_thres_size");
@@ -72,6 +74,63 @@ class FusedSeqpoolCVMOp : public framework::OperatorWithKernel {
                           "but received value is %d.",
                           ins_dims[0].size()));
 
+if (ctx->IsRuntime()) {
+
+      int batch_size = -1;
+      auto inputs_tensor = ctx->GetInputVarPtrs("X");
+      for (size_t i = 0; i < num_inputs; ++i) {
+        const auto dims = ins_dims[i];
+        int rank = dims.size();
+        if (use_cvm) {
+          PADDLE_ENFORCE_GT(
+              dims[rank - 1], 2,
+                  "Shape error in %lu id, the last dimension(embedding) of the "
+                  "'X' tensor must be larger than 2.",
+              i);
+        }
+        int cur_batch_size = 0;
+        framework::Variable* x_var =
+          PADDLE_GET(framework::Variable*, inputs_tensor[i]);
+        const auto& x_tensor = x_var->Get<LoDTensor>();
+        const auto& x_lod = x_tensor.lod();
+        if (x_lod.size() > 0) {
+          cur_batch_size = x_lod[0].size() - 1;
+        } else {
+          cur_batch_size = x_tensor.dims()[0];
+        }
+        if (batch_size == -1) {
+          batch_size = cur_batch_size;
+        } else {
+          PADDLE_ENFORCE_EQ(batch_size, cur_batch_size,
+                            platform::errors::PreconditionNotMet(
+                                "The batch size of all input should be same, "
+                                "please check, last batch_size is %d, current "
+                                "batch_size is %d",
+                                batch_size, cur_batch_size));
+        }
+        
+        framework::LoD y_lod(1);
+        y_lod[0].resize(batch_size + 1);
+        for (int i = 0; i <= batch_size; ++i) {
+           y_lod[0][i] = i;
+        }
+        std::vector<int64_t> out_dim;
+        if (use_cvm) {
+          if (clk_filter) {
+            out_dim = {batch_size, (dims[rank - 1] - 1) * embedx_concate_size};
+          } else {
+            out_dim = {batch_size, dims[rank - 1]};
+          }
+        } else {
+          // out_dim = {batch_size, dims[rank - 1] - cvm_offset};
+          out_dim = {batch_size, (dims[rank - 1] - cvm_offset - embed_thres_size) * embedx_concate_size};
+        }
+        outs_dims[i] = phi::make_ddim(out_dim);
+        outs_lods[i] = y_lod;
+      }
+
+} else {
+
     for (size_t i = 0; i < num_inputs; ++i) {
       const auto dims = ins_dims[i];
       int rank = dims.size();
@@ -88,14 +147,18 @@ class FusedSeqpoolCVMOp : public framework::OperatorWithKernel {
         if (clk_filter) {
           out_dim = {-1, (dims[rank - 1] - 1) * embedx_concate_size};
         } else {
-        out_dim = {-1, dims[rank - 1]};
+          out_dim = {-1, dims[rank - 1]};
         }
       } else {
         out_dim = {-1, (dims[rank - 1] - cvm_offset - embed_thres_size) * embedx_concate_size};
       }
       outs_dims[i] = phi::make_ddim(out_dim);
     }
+}
+
     ctx->SetOutputsDim("Out", outs_dims);
+    ctx->SetOutputsLoD("X", "Out", outs_lods);
+    // ctx->ShareLoD("X", /*->*/ "Out");
   }
 
  protected:

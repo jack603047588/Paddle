@@ -67,16 +67,17 @@ class FusedSeqpoolCVMWithDiffThresOpXPUKernel : public framework::OpKernel<T> {
     auto x0_dims = ins[0]->dims();
     auto y_dims = out[0]->dims();
     auto xpu_context = ctx.template device_context<DeviceContext>().x_context();
+
     size_t bs = x0_lod[0].size() - 1;
     int slot_num = static_cast<int>(ins.size());
-    framework::LoD y_lod(1);
-    y_lod[0].resize(bs + 1);
-    for (size_t i = 0; i <= bs; ++i) {
-        y_lod[0][i] = i;
-    }
+    // framework::LoD y_lod(1);
+    // y_lod[0].resize(bs + 1);
+    // for (size_t i = 0; i <= bs; ++i) {
+    //     y_lod[0][i] = i;
+    // }
     for (int i = 0; i < slot_num; i++) {
       out[i]->Resize({static_cast<int64_t>(bs), y_dims[1]});
-      out[i]->set_lod(y_lod);
+      // out[i]->set_lod(y_lod);
     }
     //TODO:r480 l3 have some thing wrong
     static bool use_l3_tensor = std::getenv("XPU_PADDLE_L3_TENSOR")!=NULL ?

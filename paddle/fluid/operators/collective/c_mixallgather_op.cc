@@ -16,6 +16,7 @@ limitations under the License. */
 #include "paddle/fluid/framework/lod_tensor.h"
 #include "paddle/fluid/framework/op_registry.h"
 #include "paddle/fluid/platform/device_memory_aligment.h"
+#include "paddle/fluid/framework/tensor.h"
 #if defined(PADDLE_WITH_BOX_PS)
 #if defined(PADDLE_WITH_NCCL)
 #include "paddle/fluid/platform/device/gpu/gpu_info.h"
@@ -43,11 +44,38 @@ limitations under the License. */
 namespace paddle {
 namespace operators {
 
+using LoDTensor = framework::LoDTensor;
+using Tensor = framework::Tensor;
 class CMixAllGatherOp : public framework::OperatorWithKernel {
  public:
   using framework::OperatorWithKernel::OperatorWithKernel;
 
-  void InferShape(framework::InferShapeContext *ctx) const override {}
+  void InferShape(framework::InferShapeContext *ctx) const override {
+    PADDLE_ENFORCE_GE(ctx->Inputs("Input").size(), 1UL,
+                      "Inputs(X) of FusedSeqpoolCVMOp should not be empty.");
+    PADDLE_ENFORCE_GE(ctx->Outputs("Output").size(), 1UL,
+                      "Outputs(Out) of FusedSeqpoolCVMOp should not be empty.");
+    framework::DDim out_dims;
+    auto ins_dims = ctx->GetInputsDim("Input");
+    const size_t num_inputs = ins_dims.size();
+if (ctx->IsRuntime()) {
+      auto inputs_tensor = ctx->GetInputVarPtrs("Input");
+    
+      int64_t numel = 0;
+      for (size_t i = 0; i < num_inputs; ++i) {
+        framework::Variable* x_var =
+            PADDLE_GET(framework::Variable*, inputs_tensor[i]);
+          const auto& x_tensor = x_var->Get<LoDTensor>();
+         // int64_t numel = 0;
+         //  GetTensorMemSize(in_tensors, &numel);
+         // CHECK(x_tensor.IsInitialized());
+         numel += x_tensor.numel();
+       }
+       out_dims = {numel, 1};
+      ctx->SetOutputDim("Output", out_dims);
+}
+
+  }
 
  protected:
   framework::OpKernelType GetKernelTypeForVar(

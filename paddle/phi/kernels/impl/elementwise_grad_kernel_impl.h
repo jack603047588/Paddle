@@ -32,7 +32,7 @@ void AddGradImpl(const Context& dev_ctx,
                  DenseTensor* x_grad,
                  DenseTensor* y_grad,
                  GradFunc grad_func) {
-  phi::funcs::ElementwiseGradPreProcess(out_grad, x_grad);
+  // phi::funcs::ElementwiseGradPreProcess(out_grad, x_grad);
   auto* out = &out_grad;
   // Special case when y_grad is not needed and x_grad doesn't reduce
   if (x_grad != nullptr && y_grad == nullptr &&
