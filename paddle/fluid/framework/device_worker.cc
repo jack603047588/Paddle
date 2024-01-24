@@ -183,6 +183,10 @@ std::string PrintLodTensor(const phi::DenseTensor* tensor,
              proto::VarType::FP64) {
     out_val = PrintLodTensorType<double>(
         tensor, start, end, separator, need_leading_separator);
+  } else if (framework::TransToProtoVarType(tensor->dtype()) ==
+             proto::VarType::BOOL) {
+    out_val = PrintLodTensorType<bool>(
+        tensor, start, end, separator, need_leading_separator);
   } else {
     out_val = "unsupported type";
   }
@@ -205,6 +209,10 @@ void PrintLodTensor(const phi::DenseTensor* tensor,
   } else if (framework::TransToProtoVarType(tensor->dtype()) ==
              proto::VarType::FP64) {
     PrintLodTensorType<double>(
+        tensor, start, end, out_val, separator, need_leading_separator);
+  } else if (framework::TransToProtoVarType(tensor->dtype()) ==
+             proto::VarType::BOOL) {
+    PrintLodTensorType<bool>(
         tensor, start, end, out_val, separator, need_leading_separator);
   } else {
     out_val += "unsupported type";
@@ -512,6 +520,8 @@ void PrintLodTensor(const Tensor* tensor,
     PrintLodTensorFmtType<int, int>(tensor, start, end, ":%d", out);
   } else if (dtype == proto::VarType::INT16) {
     PrintLodTensorFmtType<int16_t, int16_t>(tensor, start, end, ":%d", out);
+  } else if (dtype == proto::VarType::BOOL) {
+    PrintLodTensorFmtType<bool, bool>(tensor, start, end, ":%d", out);
   } else {
     out->append("unsupported type");
   }

@@ -79,6 +79,7 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
     bool embed_threshold_filter = ctx.Attr<bool>("embed_threshold_filter");
     float embed_threshold = ctx.Attr<float>("embed_threshold");
     int embed_thres_size = ctx.Attr<int>("embed_thres_size");
+    bool fix_ctr_to_click = ctx.Attr<bool>("fix_ctr_to_click");
 
     auto x0_lod = ins[0]->lod();
     auto x0_dims = ins[0]->dims();
@@ -153,7 +154,8 @@ class FusedSeqpoolCVMOpXPUKernel : public framework::OpKernel<T> {
                                           cvm_offset,
                                           embed_threshold_filter,
                                           embed_threshold,
-                                          embed_thres_size);
+                                          embed_thres_size,
+                                          fix_ctr_to_click);
     PADDLE_ENFORCE_EQ(r, xpu::Error_t::SUCCESS,
                      platform::errors::External(
                          "The sequence_sum_pool_cvm XPU OP return wrong value[%d %s]",
@@ -178,6 +180,7 @@ class FusedSeqpoolCVMGradOpXPUKernel : public framework::OpKernel<T> {
     bool clk_filter = ctx.Attr<bool>("clk_filter");
     auto cvm_offset = ctx.Attr<int>("cvm_offset");
     int embed_thres_size = ctx.Attr<int>("embed_thres_size");
+
     int slot_num = dxs.size();
     auto xpu_context = ctx.template device_context<DeviceContext>().x_context();
     auto place = ctx.GetPlace();

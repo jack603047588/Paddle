@@ -41,10 +41,12 @@ void CopyForPull(
     const paddle::platform::Place& place, uint64_t** xpu_keys,
     float** xpu_values, void* total_values_xpu,
     boxps::FeaturePullOffset* pull_offset, const int64_t* slot_lens,
-    const int slot_num, const int* key2slot, const int hidden_size,
+    const int slot_num, const int* key2slot, const int* d_res_idx, const int hidden_size,
     const int expand_embed_dim, const int64_t total_length, int* total_dims,
     const int skip_offset, bool expand_only,
-    const uint32_t* xpu_restore_idx = nullptr);
+    const int* xpu_merged_idx = nullptr, 
+    const int* xpu_merged_offsets = nullptr, 
+    const int merged_len = 0);
 
 void CopyForPush(
     const paddle::platform::Place& place,

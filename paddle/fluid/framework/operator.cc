@@ -1760,7 +1760,7 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
   }
 
   if (FLAGS_check_nan_inf) {
-#if defined(PADDLE_WITH_CUDA)
+#if defined(PADDLE_WITH_CUDA) || defined(PADDLE_WITH_XPU)
     if (framework::details::CheckOpHasNanOrInfRet(*this, exec_scope, place)) {
       framework::details::DumpAllScope(exec_scope, place);
       // dump current op data
