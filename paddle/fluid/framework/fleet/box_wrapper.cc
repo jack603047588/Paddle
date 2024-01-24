@@ -1152,6 +1152,13 @@ void BoxWrapper::PrintSyncTimer(int device, double train_span) {
                << ", dense nccl:" << dev.dense_nccl_timer.ElapsedSec()
                << ", sync stream:" << dev.dense_sync_timer.ElapsedSec()
                << ", wrapper xpu memory:" << dev.GpuMemUsed() << "MB";
+  
+  auto env_str = std::getenv("ENABLE_FC_HIT_RATE");
+  if (env_str != nullptr && (strcmp(env_str, "true") == 0 || strcmp(env_str, "1") == 0)) {
+    auto place = platform::XPUPlace(device);
+    auto xpu_context = static_cast<platform::XPUDeviceContext*>(platform::DeviceContextPool::Instance().Get(place))->x_context();
+    LOG(INFO) << "xpu: " << device << ", fc_hit_rate: " << xpu_context->get_fc_hit_rate();
+  }
 #else
   LOG(WARNING) << "cpu: " << device << ", phase: " << phase_
                << ", train dnn: " << train_span
