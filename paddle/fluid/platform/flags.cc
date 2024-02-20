@@ -937,6 +937,10 @@ PADDLE_DEFINE_EXPORTED_bool(enable_ins_parser_file,
             false,
             "enable parser ins file, default false");
 
+PADDLE_DEFINE_EXPORTED_bool(enable_async_datafeed_batch,
+            false,
+            "enable datafeed use 2-buffer async batch, default false");
+
 PADDLE_DEFINE_EXPORTED_bool(enable_binding_train_cpu, true,
             "enable train binding cpu, default true");
 PADDLE_DEFINE_EXPORTED_bool(enable_sync_dense_moment, false,
