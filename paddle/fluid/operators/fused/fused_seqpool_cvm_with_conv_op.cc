@@ -36,6 +36,7 @@ class FusedSeqpoolCVMOpWithConv : public framework::OperatorWithKernel {
     outs_dims.resize(num_inputs);
     bool use_cvm = ctx->Attrs().Get<bool>("use_cvm");
     bool show_filter = ctx->Attrs().Get<bool>("show_filter");
+    const int embedx_concate_size = ctx->Attrs().Get<int>("embedx_concate_size");
 
     PADDLE_ENFORCE_GT(num_inputs, 0UL,
                       platform::errors::InvalidArgument(
@@ -65,12 +66,12 @@ class FusedSeqpoolCVMOpWithConv : public framework::OperatorWithKernel {
       std::vector<int64_t> out_dim;
       if (use_cvm) {
         if (show_filter) {
-          out_dim = {-1, dims[rank - 1] - 1};
+          out_dim = {-1, (dims[rank - 1] - 1) * embedx_concate_size};
         } else {
-          out_dim = {-1, dims[rank - 1]};
+          out_dim = {-1, dims[rank - 1] * embedx_concate_size};
         }
       } else {
-        out_dim = {-1, dims[rank - 1] - cvm_offset};
+        out_dim = {-1, (dims[rank - 1] - cvm_offset) * embedx_concate_size};
       }
       outs_dims[i] = phi::make_ddim(out_dim);
     }
@@ -108,8 +109,13 @@ class FusedSeqpoolCVMOpWithConvMaker : public framework::OpProtoAndCheckerMaker 
                    "(float, default 0.0) The value to pad for empty sequence.")
         .SetDefault(0.0);
     AddAttr<bool>("use_cvm", "bool, use cvm or not").SetDefault(true);
+    AddAttr<bool>("need_filter", "(bool, default false)").SetDefault(false);
+    AddAttr<float>("show_coeff", "(float, default 0.2)").SetDefault(0.2);
+    AddAttr<float>("clk_coeff", "(float, default 1)").SetDefault(1);
+    AddAttr<float>("threshold", "(float, default 0.96)").SetDefault(0.96);
     AddAttr<int>("cvm_offset", "(int, default 3)").SetDefault(3);
     AddAttr<bool>("show_filter", "(bool, default false)").SetDefault(false);
+    AddAttr<int>("embedx_concate_size", "(int, default 1)").SetDefault(1);
 
     AddComment(R"DOC(
 Fuse multiple pairs of Sequence Pool and CVM Operator.
@@ -129,6 +135,7 @@ class FusedSeqpoolCVMGradOpWithConv : public framework::OperatorWithKernel {
     const int cvm_offset = ctx->Attrs().Get<int>("cvm_offset");
     bool use_cvm = ctx->Attrs().Get<bool>("use_cvm");
     bool show_filter = ctx->Attrs().Get<bool>("show_filter");
+    const int embedx_concate_size = ctx->Attrs().Get<int>("embedx_concate_size");
 
     PADDLE_ENFORCE_EQ(
         cvm_dims.size(), 2,
@@ -144,7 +151,7 @@ class FusedSeqpoolCVMGradOpWithConv : public framework::OperatorWithKernel {
       if (use_cvm) {
         auto o_dim = og_dims[i][og_dims[i].size() - 1];
         if (show_filter) {
-            o_dim += 1;
+            o_dim = o_dim / embedx_concate_size + 1;
         }
         PADDLE_ENFORCE_EQ(
             o_dim, x_dims[i][og_dims[i].size() - 1],
@@ -157,7 +164,7 @@ class FusedSeqpoolCVMGradOpWithConv : public framework::OperatorWithKernel {
       } else {
         PADDLE_ENFORCE_EQ(
             og_dims[i][og_dims[i].size() - 1],
-            x_dims[i][og_dims[i].size() - 1] - cvm_offset,
+            (x_dims[i][og_dims[i].size() - 1] - cvm_offset) * embedx_concate_size,
             platform::errors::InvalidArgument(
                 "The dimension mismatch between Input(OUT@GRAD) and "
                 "Input(X). Received Input(OUT@GRAD): input rank %u, "
