@@ -1294,17 +1294,6 @@ void BoxWrapper::InitializeGPUAndLoadModel(
         lr_map_[e.first + ".b_0"] = e.second;
       }
     }
-#if defined(PADDLE_WITH_XPU_KP)
-    std::vector<void*> bkcl_ctx_vec(gpu_num_, nullptr);
-    if (boxps::MPICluster::Ins().size() == 1 && gpu_num_ > 1) {
-        for (int i = 0; i < gpu_num_; ++i) {
-            auto place = platform::XPUPlace(i);
-            auto comm = platform::BKCLCommContext::Instance().Get(0, place);
-            bkcl_ctx_vec[i] = static_cast<void*>(comm->comm());
-        }
-    }
-    boxps_ptr_->SetBKCLDefaultContext(bkcl_ctx_vec);
-#endif
   }
 }
 
