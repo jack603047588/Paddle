@@ -43,12 +43,14 @@ limitations under the License. */
 #include "paddle/fluid/framework/lod_tensor.h"
 #include "paddle/fluid/framework/scope.h"
 #include "paddle/fluid/framework/tensor_util.h"
+#include "paddle/fluid/framework/heter_util.h"
 #include "paddle/fluid/platform/monitor.h"
 #include "paddle/fluid/platform/place.h"
 #include "paddle/fluid/platform/timer.h"
 #include "paddle/fluid/string/string_helper.h"
 #include "paddle/fluid/framework/fleet/metrics.h"
 #include "paddle/fluid/framework/fleet/box_wrapper_kernel.h"
+#include "paddle/fluid/framework/barrier.h"
 
 #if defined(TRACE_PROFILE) && (defined(PADDLE_WITH_XPU_KP) || defined(PADDLE_WITH_XPU))
 // The producer side.
@@ -500,6 +502,31 @@ class BoxWrapper {
   void BeginPass();
   void EndPass(bool need_save_delta);
   void SetTestMode(bool is_test) const;
+
+  // new add
+  struct NextBatchBuffer {
+    public:
+      paddle::platform::Place place;
+      std::vector<const uint64_t*> keys;
+      std::vector<int64_t> slot_lengths;
+
+      void Reset() {
+        keys.clear();
+        slot_lengths.clear();
+      }
+  };
+  void AlignSlotPosition(const int dev, const std::vector<std::string>& use_slots);
+  void PrepareSlot(std::shared_ptr<NextBatchBuffer> xpu_task,
+                   std::vector<LoDTensor>& feed_vec,
+                   const paddle::platform::Place& place);
+
+  void PrepareData(std::vector<LoDTensor>& feed_vec,
+                   const paddle::platform::Place& place);
+  // void start_build_thread();
+  // void prepare_xpu_thread(int device_id);
+  void PrepareXPUAsync(std::shared_ptr<NextBatchBuffer> xpu_task,
+                       DeviceBoxData& dev,
+                       const paddle::platform::Place& place);
 
   void PullSparseCase(const paddle::platform::Place& place,
                       const std::vector<const uint64_t*>& keys,
@@ -960,10 +987,34 @@ class BoxWrapper {
   std::map<std::string, MetricMsg*> metric_lists_;
   std::vector<std::string> metric_name_list_;
   std::vector<int> slot_vector_;
+  std::unordered_map<int, int> align_slot_map;
   bool use_afs_api_ = false;
   std::shared_ptr<boxps::PaddleFileMgr> file_manager_ = nullptr;
   // box device cache
   DeviceBoxData* device_caches_ = nullptr;
+
+  // async
+  // Barrier barrier;
+  std::vector<std::shared_ptr<
+      paddle::framework::ChannelObject<std::shared_ptr<NextBatchBuffer>>>>
+      data_ready_channel_;
+  std::vector<std::shared_ptr<
+      paddle::framework::ChannelObject<std::shared_ptr<DeviceBoxData>>>>
+      pull_ready_channel_;
+  std::vector<std::shared_ptr<
+      paddle::framework::ChannelObject<std::shared_ptr<DeviceBoxData>>>>
+      push_ready_channel_;
+  std::vector<std::shared_ptr<
+       paddle::framework::ChannelObject<std::shared_ptr<DeviceBoxData>>>>
+       xpu_free_channel_;
+
+  HeterObjectPool<NextBatchBuffer> xpu_task_pool_;
+  std::vector<bool> has_push_;
+  std::vector<bool> is_first_batch_;
+  // std::vector<std::thread> pre_build_threads_;
+  // bool running_ = false;
+
+
   std::map<std::string, float> lr_map_;
   size_t input_table_dim_ = 0;
   int gpu_num_ = GetDeviceCount();

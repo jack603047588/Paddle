@@ -3070,8 +3070,12 @@ void SlotPaddleBoxDataFeed::Init(const DataFeedDesc& data_feed_desc) {
     }
   }
   used_slots_info_.resize(use_slot_size_);
-
   feed_vec_.resize(used_slots_info_.size());
+
+  // BoxWrapper和DataFeed对齐slot位置
+  // auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
+  // box_ptr->AlignSlotPosition(use_slots_);
+
   const int kEstimatedFeasignNumPerSlot = 5;  // Magic Number
   for (size_t i = 0; i < all_slot_num; i++) {
     batch_float_feasigns_.push_back(std::vector<float>());
@@ -3410,6 +3414,7 @@ bool SlotPaddleBoxDataFeed::PrefechNextBatchWithPv(const SlotPvInstance* pvs, in
 }
 
 bool SlotPaddleBoxDataFeed::PrefechNextBatch(const SlotRecord* ins_vec, int num) {
+  VLOG(0) << "before prefetch, deid:" << (int)(this->place_.GetDeviceId());
   int uint64_total_len = 0, float_total_len = 0;
   
   auto & slot_float_feas = slot_pv_tensor_buf_next_->batch_float_feasigns();
@@ -3463,6 +3468,7 @@ bool SlotPaddleBoxDataFeed::PrefechNextBatch(const SlotRecord* ins_vec, int num)
     }
   }
 
+  VLOG(0) << "mid prefetch, deid:" << (int)(this->place_.GetDeviceId());
   // alloc mem
   slot_pv_tensor_buf_next_->resize_tensor(float_total_len, uint64_total_len);
 
@@ -3476,6 +3482,7 @@ bool SlotPaddleBoxDataFeed::PrefechNextBatch(const SlotRecord* ins_vec, int num)
   size_t slot_uint64_offset = 0;
   size_t slot_float_offset = 0;
 
+  VLOG(0) << "before shared buffer, deid:" << (int)(this->place_.GetDeviceId());
   // shared buffer
   for (int j = 0; j < use_slot_size_; ++j) {
     size_t slot_total_len = slot_offsets[j][slot_offsets[j].size() - 1];
@@ -3499,6 +3506,7 @@ bool SlotPaddleBoxDataFeed::PrefechNextBatch(const SlotRecord* ins_vec, int num)
       }
     }
     feed_vec[j].Resize({static_cast<long int>(slot_total_len), 1});
+    // VLOG(0) << "shared buffer, deid:" << (int)(this->place_.GetDeviceId()) << ", slotid:" << j;
     if (info.dense) {
       if (info.inductive_shape_index != -1) {
         info.local_shape[info.inductive_shape_index] = slot_total_len / info.total_dims_without_inductive;
@@ -3514,6 +3522,10 @@ bool SlotPaddleBoxDataFeed::PrefechNextBatch(const SlotRecord* ins_vec, int num)
             (num + 1) * sizeof(size_t));
     }
   }
+  // aync put data to boxwrapper channel
+  VLOG(0) << "before prepare data, deid:" << (int)(this->place_.GetDeviceId());
+  auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
+  box_ptr->PrepareData(feed_vec, this->place_);
   return true;
 }
 
@@ -3527,15 +3539,19 @@ void SlotPaddleBoxDataFeed::PutToFeedSlotVec(const SlotRecord* ins_vec,
 #elif defined(PADDLE_WITH_XPU_KP) && !defined(CPU_DATA_FEED)
 
   paddle::platform::SetXPUDeviceId(place_.GetDeviceId());
-  
+ 
+  VLOG(0) << "devid:" << (int)(place_.GetDeviceId()) << ", in put to feed" << slot_pv_tensor_buf_next_->valid();
+ 
   if (FLAGS_enable_async_datafeed_batch) {
     if (!slot_pv_tensor_buf_next_->valid()) { // first_batch
       std::future<bool> prefetch_done = std::async(std::launch::async, 
           std::bind(&SlotPaddleBoxDataFeed::PrefechNextBatch, this, ins_vec, num));
       slot_pv_tensor_buf_next_->set_buffer_done(std::move(prefetch_done));
     } 
+  VLOG(0) << "devid:" << (int)(place_.GetDeviceId()) << ", mid put to feed" << slot_pv_tensor_buf_next_->valid();
     slot_pv_tensor_buf_next_->wait_buffer_done();
     std::swap(slot_pv_tensor_buf_next_, slot_pv_tensor_buf_);
+  VLOG(0) << "devid:" << (int)(place_.GetDeviceId()) << ", swap put to feed" << slot_pv_tensor_buf_next_->valid();
     auto & bufferd_feed_vec = slot_pv_tensor_buf_->feed_vec();
     for (int j = 0; j < use_slot_size_; ++j) {
       feed_vec_[j]->ShareDataWith(bufferd_feed_vec[j]);

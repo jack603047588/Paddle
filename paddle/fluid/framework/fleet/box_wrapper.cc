@@ -1293,6 +1293,40 @@ void BoxWrapper::InitializeGPUAndLoadModel(
     }
     slot_vector_ = slot_vector;
     device_caches_ = new DeviceBoxData[gpu_num_];
+    // next_device_caches_ = new DeviceBoxData[gpu_num_];
+    data_ready_channel_.resize(gpu_num_, nullptr);
+    pull_ready_channel_.resize(gpu_num_, nullptr);
+    push_ready_channel_.resize(gpu_num_, nullptr);
+    xpu_free_channel_.resize(gpu_num_, nullptr);
+    has_push_.resize(gpu_num_, false);
+    is_first_batch_.resize(gpu_num_, false);
+    // barrier.reset(gpu_num_);
+    for (int i = 0; i < gpu_num_; i++) {
+      data_ready_channel_[i] =
+          paddle::framework::MakeChannel<std::shared_ptr<NextBatchBuffer>>();
+      pull_ready_channel_[i] =
+          paddle::framework::MakeChannel<std::shared_ptr<DeviceBoxData>>();
+      push_ready_channel_[i] =
+          paddle::framework::MakeChannel<std::shared_ptr<DeviceBoxData>>();
+      xpu_free_channel_[i] =
+           paddle::framework::MakeChannel<std::shared_ptr<DeviceBoxData>>();
+
+      data_ready_channel_[i]->Open();
+      data_ready_channel_[i]->SetCapacity(3);
+      pull_ready_channel_[i]->Open();
+      pull_ready_channel_[i]->SetCapacity(2);
+      push_ready_channel_[i]->Open();
+      push_ready_channel_[i]->SetCapacity(2);
+      xpu_free_channel_[i]->Open();
+      xpu_free_channel_[i]->SetCapacity(2);
+
+      std::shared_ptr<DeviceBoxData> free_task1 = std::make_shared<DeviceBoxData>();
+      std::shared_ptr<DeviceBoxData> free_task2 = std::make_shared<DeviceBoxData>();
+      xpu_free_channel_[i]->Put(free_task1);
+      xpu_free_channel_[i]->Put(free_task2);
+    }
+    // start_build_thread();
+
 
     VLOG(0) << "lr_map.size(): " << lr_map.size();
     for (const auto e : lr_map) {
@@ -1332,6 +1366,19 @@ void BoxWrapper::Finalize() {
     delete[] device_caches_;
     device_caches_ = nullptr;
   }
+  // if (next_device_caches_ != nullptr) {
+  //   delete[] next_device_caches_;
+  //   next_device_caches_ = nullptr;
+  // }
+  for(int i = 0; i < gpu_num_; i++) {
+    data_ready_channel_[i]->Close();
+    pull_ready_channel_[i]->Close();
+    push_ready_channel_[i]->Close();
+    xpu_free_channel_[i]->Close();
+    // pre_build_threads_[i].join();
+  }
+  // running_ = false;
+
   s_instance_ = nullptr;
 }
 

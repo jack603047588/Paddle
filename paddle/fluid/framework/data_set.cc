@@ -1030,6 +1030,12 @@ void DatasetImpl<T>::CreateReaders() {
   for (int i = 0; i < thread_num_; ++i) {
     readers_.push_back(DataFeedFactory::CreateDataFeed(data_feed_desc_.name()));
     readers_[i]->Init(data_feed_desc_);
+    // if (i == 0) {
+    //   VLOG(0) << "align slot position";
+    //   auto use_slots = readers_[i]->GetUseSlotAlias(); 
+    //   auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
+    //   box_ptr->AlignSlotPosition(use_slots);
+    // }
     readers_[i]->SetThreadId(i);
     readers_[i]->SetThreadNum(thread_num_);
     readers_[i]->SetFileListMutex(&mutex_for_pick_file_);
@@ -2643,6 +2649,11 @@ void PadBoxSlotDataset::CreateReaders() {
     }
     // disk archive file
     readers_[i]->SetLoadArchiveFile(is_archive_file_);
+    // if (i == 0) {
+      auto use_slots = readers_[i]->GetUseSlotAlias(); 
+      auto box_ptr = paddle::framework::BoxWrapper::GetInstance();
+      box_ptr->AlignSlotPosition(i, use_slots);
+    // }
   }
   VLOG(3) << "readers size: " << readers_.size();
 }
@@ -2772,12 +2783,12 @@ void PadBoxSlotDataset::DynamicAdjustReadersNum(int thread_num) {
     PrepareTrain();
     return;
   }
-  VLOG(3) << "adjust readers num from " << thread_num_ << " to " << thread_num;
+  VLOG(0) << "adjust readers num from " << thread_num_ << " to " << thread_num;
   thread_num_ = thread_num;
   readers_.clear();
   readers_.shrink_to_fit();
   CreateReaders();
-  VLOG(3) << "adjust readers num done";
+  VLOG(0) << "adjust readers num done";
   PrepareTrain();
 }
 
