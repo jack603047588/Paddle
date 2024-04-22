@@ -352,6 +352,11 @@ class MetricMsg {
         platform::errors::NotFound("Error: var %s is not found in scope.",
                                    varname.c_str()));
     auto& gpu_tensor = var->Get<LoDTensor>();
+    PADDLE_ENFORCE_EQ(
+        gpu_tensor.IsInitialized(),
+        true,
+        platform::errors::InvalidArgument(
+            "Error: monitor var `%s` uninitialized Tensor.", varname.c_str()));
     *data = gpu_tensor.data<T>();
     *len = gpu_tensor.numel();
   }
@@ -365,6 +370,11 @@ class MetricMsg {
         platform::errors::NotFound("Error: var %s is not found in scope.",
                                    varname.c_str()));
     auto& gpu_tensor = var->Get<LoDTensor>();
+    PADDLE_ENFORCE_EQ(
+        gpu_tensor.IsInitialized(),
+        true,
+        platform::errors::InvalidArgument(
+            "Error: monitor var `%s` uninitialized Tensor.", varname.c_str()));
     auto* gpu_data = gpu_tensor.data<T>();
     auto len = gpu_tensor.numel();
     data->resize(len);
@@ -929,7 +939,7 @@ class BoxWrapper {
     for (auto& name : var_names) {
       auto it = std::find(skip_gc_vars_.begin(), skip_gc_vars_.end(), name);
       if (it != skip_gc_vars_.end()) {
-        return;
+        continue;
       }
       skip_gc_vars_.push_back(name);
     }
