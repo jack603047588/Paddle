@@ -1315,7 +1315,21 @@ void BoxPSWorker::TrainFiles() {
       if (sync_points_.find(op.get()) != sync_points_.end()) {
         dev_ctx_->Wait();
       }
+
+
       op->Run(*thread_scope_, place_);
+      // test_code
+      {
+        thread_local int cnt = 0;
+        //auto [tot, used , free] = ml_handler.getMemoryUsageTuple();
+        if (cnt < 10) {
+          auto mem_tup = ml_handler_.getMemoryUsageTuple(device_id_);
+          VLOG(0) << "dev" << device_id_ << "after OP " << op->Type() << " run total " << std::get<0>(mem_tup) 
+                                                      << " used " << std::get<1>(mem_tup) 
+                                                      << " free " << std::get<2>(mem_tup);
+          cnt++;
+        }
+      }
       if (gc) {
         DeleteUnusedTensors(*thread_scope_, op.get(), unused_vars_, gc.get());
       }
@@ -1360,6 +1374,11 @@ void BoxPSWorker::TrainFiles() {
   timer.Pause();
   auto box_ptr = BoxWrapper::GetInstance();
   box_ptr->PrintSyncTimer(device_id_, timer.ElapsedSec());
+
+  auto mem_tup = ml_handler_.getMemoryUsageTuple(device_id_);
+  VLOG(0) << "dev" << device_id_ << "after TrainFiles total " << std::get<0>(mem_tup) 
+                                              << " used " << std::get<1>(mem_tup) 
+                                              << " free " << std::get<2>(mem_tup);
 }
 void BoxPSWorker::TrainFilesWithProfiler() {
   VLOG(3) << "begin section_worker TrainFiles with profiler";

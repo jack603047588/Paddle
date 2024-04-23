@@ -949,6 +949,9 @@ class BoxPSWorker : public DeviceWorker {
   bool sharding_mode_ = false;
   // op extend
   std::unordered_set<const OperatorBase*> sync_points_;
+#if defined(PADDLE_WITH_XPU)
+  platform::XPUMLHandler ml_handler_;
+#endif
 };
 #endif
 
