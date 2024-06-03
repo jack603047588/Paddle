@@ -1292,7 +1292,6 @@ void BoxPSWorker::TrainFiles() {
   }
   int step = 0;
   SetDeviceID(device_id_);
-
   std::unique_ptr<GarbageCollector> gc = nullptr;
   int64_t max_memory_size = GetEagerDeletionThreshold();
   if (FLAGS_padbox_enable_gc && max_memory_size >= 0 && !unused_vars_.empty()) {
@@ -1349,6 +1348,7 @@ void BoxPSWorker::TrainFiles() {
       thread_scope_->DropKids();
     }
     ++step;
+
     // std::stringstream ss;
     // ss << "Malloc Cnt: ";
     // for (int i = 0; i < 8; ++i) {
@@ -1356,6 +1356,9 @@ void BoxPSWorker::TrainFiles() {
     // }
     // VLOG(0) << ss.str();
   }
+  // VLOG(0) << "dev_id: [" << device_id_
+  //           << "] pull_dense&push_dense time:" << dense_time / 1000
+  //           << "ms";
   // sync param step
   if (sync_mode_ > 0) {
     SyncParam();

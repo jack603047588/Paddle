@@ -15,7 +15,6 @@
 #include "paddle/phi/core/kernel_registry.h"
 #include "paddle/phi/kernels/gpu/reduce.h"
 #include "paddle/phi/kernels/reduce_all_kernel.h"
-
 namespace phi {
 
 template <typename T, typename Context>

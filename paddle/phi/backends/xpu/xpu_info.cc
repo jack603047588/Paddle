@@ -267,13 +267,16 @@ void MemcpySyncD2D(void* dst,
 XPUVersion get_xpu_version(int dev_id) {
   uint64_t v = 0;
   PADDLE_ENFORCE_XPU_SUCCESS(xpu_device_get_attr(&v, XPUATTR_MODEL, dev_id));
-
+//  std::cout << "XPU version: " << v << std::endl;
   if (v == K100 || v == K200) {
     VLOG(1) << "KUNLUN device " << dev_id << " is XPU1\n";
     return XPU1;
-  } else {
+  } else if (v == R200) {
     VLOG(1) << "KUNLUN device " << dev_id << " is XPU2\n";
     return XPU2;
+  } else {
+    VLOG(1) << "KUNLUN device " << dev_id << " is XPU3\n";
+    return XPU3;
   }
 }
 

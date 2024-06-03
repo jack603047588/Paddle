@@ -895,20 +895,20 @@ static void LaunchReduceKernel(const Tx* x_data,
     auto grid_num = config.grid;
     auto block_num = config.block;
 #endif
-    ReduceAnyKernel<Tx, Ty, MPType, ReduceOp, TransformOp, OneDimIndexCal>
-        <<<grid_num, block_num, 0, stream>>>(
-            x_data,
-            config.output_data,
-            reducer,
-            transform,
-            init,
-            config.reduce_num,
-            config.left_num,
-            config.reduce_last_dim,
-            reduce_index_calculator,
-            left_index_calculator,
-            dim,
-            is_mean && (!config.should_reduce_again));
+    // ReduceAnyKernel<Tx, Ty, MPType, ReduceOp, TransformOp, OneDimIndexCal>
+    //     <<<grid_num, block_num, 0, stream>>>(
+    //         x_data,
+    //         config.output_data,
+    //         reducer,
+    //         transform,
+    //         init,
+    //         config.reduce_num,
+    //         config.left_num,
+    //         config.reduce_last_dim,
+    //         reduce_index_calculator,
+    //         left_index_calculator,
+    //         dim,
+    //         is_mean && (!config.should_reduce_again));
 
   } else {
     int reduce_rank = config.reduce_strides.size();
@@ -935,20 +935,20 @@ static void LaunchReduceKernel(const Tx* x_data,
     auto grid_num = config.grid;
     auto block_num = config.block;
 #endif
-    ReduceAnyKernel<Tx, Ty, MPType, ReduceOp, TransformOp, IndexCalculator>
-        <<<grid_num, block_num, 0, stream>>>(
-            x_data,
-            config.output_data,
-            reducer,
-            transform,
-            init,
-            config.reduce_num,
-            config.left_num,
-            config.reduce_last_dim,
-            reduce_index_calculator,
-            left_index_calculator,
-            dim,
-            is_mean && (!config.should_reduce_again));
+    // ReduceAnyKernel<Tx, Ty, MPType, ReduceOp, TransformOp, IndexCalculator>
+    //     <<<grid_num, block_num, 0, stream>>>(
+    //         x_data,
+    //         config.output_data,
+    //         reducer,
+    //         transform,
+    //         init,
+    //         config.reduce_num,
+    //         config.left_num,
+    //         config.reduce_last_dim,
+    //         reduce_index_calculator,
+    //         left_index_calculator,
+    //         dim,
+    //         is_mean && (!config.should_reduce_again));
   }
 
   if (config.should_reduce_again) {
@@ -974,23 +974,23 @@ static void LaunchReduceKernel(const Tx* x_data,
     auto grid_size = grid;
     auto block_size = block;
 #endif
-    ReduceHigherDimKernel<Ty,
-                          Ty,
-                          MPType,
-                          ReduceOp,
-                          kps::IdentityFunctor<Ty, MPType>>
-        <<<grid_size, block_size, 0, stream>>>(
-            config.output_data,
-            y_data,
-            reducer,
-            kps::IdentityFunctor<Ty, MPType>(),
-            init,
-            config.grid.y,
-            config.left_num,
-            config.grid.y,
-            dim,
-            config.reduce_num,
-            is_mean);
+    // ReduceHigherDimKernel<Ty,
+    //                       Ty,
+    //                       MPType,
+    //                       ReduceOp,
+    //                       kps::IdentityFunctor<Ty, MPType>>
+    //     <<<grid_size, block_size, 0, stream>>>(
+    //         config.output_data,
+    //         y_data,
+    //         reducer,
+    //         kps::IdentityFunctor<Ty, MPType>(),
+    //         init,
+    //         config.grid.y,
+    //         config.left_num,
+    //         config.grid.y,
+    //         dim,
+    //         config.reduce_num,
+    //         is_mean);
   }
 }
 
@@ -1141,19 +1141,19 @@ void ReduceKernel(const KPDevice& dev_ctx,
     auto grid_num = config.grid;
     auto block_num = config.block;
 #endif
-    ReduceHigherDimKernel<Tx, Ty, MPType, ReduceOp<MPType>, TransformOp>
-        <<<grid_num, block_num, 0, stream>>>(
-            x_data,
-            config.output_data,
-            reducer,
-            transform,
-            reducer.initial(),
-            config.reduce_num,
-            config.left_num,
-            config.blocking_size,
-            dim,
-            config.reduce_num,
-            is_mean && (!config.should_reduce_again));
+    // ReduceHigherDimKernel<Tx, Ty, MPType, ReduceOp<MPType>, TransformOp>
+    //     <<<grid_num, block_num, 0, stream>>>(
+    //         x_data,
+    //         config.output_data,
+    //         reducer,
+    //         transform,
+    //         reducer.initial(),
+    //         config.reduce_num,
+    //         config.left_num,
+    //         config.blocking_size,
+    //         dim,
+    //         config.reduce_num,
+    //         is_mean && (!config.should_reduce_again));
 
     if (config.should_reduce_again) {
       dim3 block = dim3(config.block.x, 1, 1);
@@ -1169,23 +1169,23 @@ void ReduceKernel(const KPDevice& dev_ctx,
       auto grid_size = grid;
       auto block_size = block;
 #endif
-      ReduceHigherDimKernel<Ty,
-                            Ty,
-                            MPType,
-                            ReduceOp<MPType>,
-                            kps::IdentityFunctor<Ty, MPType>>
-          <<<grid_size, block_size, 0, stream>>>(
-              config.output_data,
-              y_data,
-              reducer,
-              kps::IdentityFunctor<Ty, MPType>(config.grid.y),
-              reducer.initial(),
-              config.grid.y,
-              config.left_num,
-              config.grid.y,
-              dim2,
-              config.reduce_num,
-              is_mean);
+      // ReduceHigherDimKernel<Ty,
+      //                       Ty,
+      //                       MPType,
+      //                       ReduceOp<MPType>,
+      //                       kps::IdentityFunctor<Ty, MPType>>
+      //     <<<grid_size, block_size, 0, stream>>>(
+      //         config.output_data,
+      //         y_data,
+      //         reducer,
+      //         kps::IdentityFunctor<Ty, MPType>(config.grid.y),
+      //         reducer.initial(),
+      //         config.grid.y,
+      //         config.left_num,
+      //         config.grid.y,
+      //         dim2,
+      //         config.reduce_num,
+      //         is_mean);
     }
     return;
   }

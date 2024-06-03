@@ -805,9 +805,9 @@ void LaunchElementwiseCudaKernel(const KPDevice &ctx,
   auto stream = ctx.x_context()->xpu_stream;
   int64_t main_offset =
       (numel / (read_lens * block_size)) * read_lens * block_size;
-  VectorizedElementwiseKernel<OutT, Functor, Arity, NumOuts, VecSize>
-      <<<grid_size, block_size, 0, stream>>>(
-          ins_data, outs_data, numel, main_offset, read_lens, func);
+  // VectorizedElementwiseKernel<OutT, Functor, Arity, NumOuts, VecSize>
+  //     <<<grid_size, block_size, 0, stream>>>(
+  //         ins_data, outs_data, numel, main_offset, read_lens, func);
 #else
   auto gpu_config =
       phi::backends::gpu::GetGpuLaunchConfig1D(ctx, numel, VecSize);

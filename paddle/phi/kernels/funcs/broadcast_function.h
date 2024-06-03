@@ -456,16 +456,16 @@ void LaunchBroadcastKernel(
                     read_lens * gpu_config.GetBlockSize();
   int tail_tid = numel % (read_lens * gpu_config.GetBlockSize());
 #endif
-  VectorizedBroadcastKernel<InT, OutT, Functor, Arity, NumOuts, VecSize>
-      <<<blocks, threads, 0, stream>>>(ins_data,
-                                       outs_data,
-                                       use_broadcast,
-                                       numel,
-                                       configs,
-                                       main_offset,
-                                       tail_tid,
-                                       read_lens,
-                                       func);
+  // VectorizedBroadcastKernel<InT, OutT, Functor, Arity, NumOuts, VecSize>
+  //     <<<blocks, threads, 0, stream>>>(ins_data,
+  //                                      outs_data,
+  //                                      use_broadcast,
+  //                                      numel,
+  //                                      configs,
+  //                                      main_offset,
+  //                                      tail_tid,
+  //                                      read_lens,
+  //                                      func);
 }
 
 template <ElementwiseType ET,

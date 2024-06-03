@@ -2,6 +2,7 @@ if(NOT WITH_XPU)
   return()
 endif()
 
+
 include(ExternalProject)
 set(XPU_PROJECT "extern_xpu")
 set(XPU_API_LIB_NAME "libxpuapi.so")

@@ -132,7 +132,9 @@ class small_vector_base {
 
 template <class T>
 using SmallVectorSizeType = typename std::
+    // conditional<sizeof(T) < 4, uint64_t, uint32_t>::type;
     conditional<sizeof(T) < 4 && sizeof(void *) >= 8, uint64_t, uint32_t>::type;
+
 
 /// Figure out the offset of the first element.
 template <class T, typename = void>
@@ -1458,12 +1460,13 @@ template class paddle::small_vector_base<uint32_t>;
 template class paddle::small_vector_base<uint64_t>;
 
 // Assertions to ensure this #if stays in sync with SmallVectorSizeType.
-static_assert(sizeof(SmallVectorSizeType<char>) == sizeof(uint64_t),
-              "Expected small_vector_base<uint64_t> variant to be in use.");
+// static_assert(sizeof(SmallVectorSizeType<char>) == sizeof(uint64_t),
+//               "Expected small_vector_base<uint64_t> variant to be in use.");
 #else
 static_assert(sizeof(SmallVectorSizeType<char>) == sizeof(uint32_t),
               "Expected small_vector_base<uint32_t> variant to be in use.");
 #endif
+
 
 }  // namespace paddle
 

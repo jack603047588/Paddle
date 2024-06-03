@@ -36,7 +36,6 @@ void CopyKeys(const paddle::platform::Place& place,
                             uint64_t** origin_keys, unsigned long long* total_keys,
                             const int64_t* xpu_len, int slot_num,
                             int total_len, int* key2slot);
-
 void CopyForPull(
     const paddle::platform::Place& place, uint64_t** xpu_keys,
     float** xpu_values, void* total_values_xpu,
