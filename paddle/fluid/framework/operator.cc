@@ -71,6 +71,9 @@ DECLARE_bool(check_nan_inf);
 DECLARE_bool(enable_unused_var_check);
 DECLARE_bool(run_kp_kernel);
 DECLARE_bool(enable_host_event_recorder_hook);
+PADDLE_DEFINE_EXPORTED_bool(enable_check_input_var,
+                            false,
+                            "enable check input var");
 
 namespace paddle {
 namespace framework {
@@ -1760,14 +1763,17 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
   }
 
   if (FLAGS_check_nan_inf) {
-#if defined(PADDLE_WITH_CUDA) || defined(PADDLE_WITH_XPU)
+#if defined(PADDLE_WITH_CUDA) || defined(PADDLE_WITH_XPU) || defined(PADDLE_WITH_XPU_KP)
     if (framework::details::CheckOpHasNanOrInfRet(*this, exec_scope, place)) {
       framework::details::DumpAllScope(exec_scope, place);
+      VLOG(0) << "op_type: " << Type() << ", CheckOpHasNanOrInf failed!!";
       // dump current op data
       for (auto& iname : InputVars()) {
         auto* var = exec_scope.FindVar(iname);
         if (var == nullptr) continue;
+        VLOG(0) << "op_input: " << iname;
         std::ostringstream os;
+        os << "op type: " << type_ << "\n";
         os << "input name:" << iname << ", ";
         if (var->IsType<framework::LoDTensor>()) {
           os << var->Get<framework::LoDTensor>();
@@ -1780,7 +1786,9 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
       for (auto& iname : OutputVars(true)) {
         auto* var = exec_scope.FindVar(iname);
         if (var == nullptr) continue;
+        VLOG(0) << "op_output: " << iname;
         std::ostringstream os;
+        os << "op type: " << type_ << "\n";
         os << "output name:" << iname << ", ";
         if (var->IsType<framework::LoDTensor>()) {
           os << var->Get<framework::LoDTensor>();
@@ -1790,7 +1798,8 @@ void OperatorWithKernel::RunImpl(const Scope& scope,
         os << "\n";
         printf("%s", os.str().c_str());
       }
-      PADDLE_ENFORCE(false, "ERROR: check INF and NAN: %s",
+      PADDLE_ENFORCE(false,
+                     "ERROR: check INF and NAN: %s",
                      DebugStringEx(&exec_scope).c_str());
     }
 #else
@@ -1955,7 +1964,8 @@ void OperatorWithKernel::ChooseKernel(const ExecutionContext& ctx) const {
               << ", fallbacking to CPU one!";
       expected_kernel_key.place_ = platform::CPUPlace();
       kernel_iter = kernels.find(expected_kernel_key);
-    } else if (!paddle::platform::is_xpu_support_op(type_, expected_kernel_key)) {
+    } else if (!paddle::platform::is_xpu_support_op(type_,
+                                                    expected_kernel_key)) {
       VLOG(3) << "fluid XPU not support kernel: " << type_
               << ", expected_kernel_key:" << expected_kernel_key
               << ", fallbacking to CPU one!";
@@ -2436,13 +2446,15 @@ void OperatorWithKernel::ParseInputDataType(
       }
     }
     if (t != nullptr) {
-      PADDLE_ENFORCE_EQ(
-          t->IsInitialized(),
-          true,
-          platform::errors::InvalidArgument("The %s Op's Input Variable `%s` "
-                                            "contains uninitialized Tensor.",
-                                            Type(),
-                                            name));
+      if (FLAGS_enable_check_input_var) {
+        PADDLE_ENFORCE_EQ(
+            t->IsInitialized(),
+            true,
+            platform::errors::InvalidArgument("The %s Op's Input Variable `%s` "
+                                              "contains uninitialized Tensor.",
+                                              Type(),
+                                              name));
+      }
       *data_type = paddle::framework::TransToProtoVarType(t->dtype());
     }
   }

@@ -399,10 +399,9 @@ class BoxPSTrainer : public TrainerBase {
   void InitDumpEnv() override;
   virtual std::string GetDumpPath(int tid);
   virtual void DumpWork(int tid);
-
- protected:
-  void CopyParameters(const Scope& root_scope, int device_id);
-  void DumpParameters(void);
+  virtual void FinalizeDumpEnv();
+  void RemoveOtherDeviceVars(const ProgramDesc& main_program,
+                             Scope* root_scope);
 
  protected:
   int thread_num_;
@@ -412,6 +411,7 @@ class BoxPSTrainer : public TrainerBase {
   //  std::vector<std::thread> worker_threads_;
   std::vector<std::future<void>> wait_futures_;
   std::vector<DataFeed*> readers_;
+  std::vector<std::future<void>> dump_futures_;
 
   std::shared_ptr<std::vector<std::string>> param_need_sync_;
   std::vector<std::string> persistable_vars_;
