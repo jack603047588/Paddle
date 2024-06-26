@@ -75,6 +75,16 @@ std::ostream &operator<<(std::ostream &os, const Place &p) {
   return os;
 }
 
+Place GetPinnedPlace(const Place &place) {
+  switch (place.GetType()) {
+    case AllocationType::GPU:
+      return phi::GPUPinnedPlace();
+      break;
+    default:
+      return place;
+  }
+}
+
 static std::unordered_map<std::string, size_t> global_registered_device_type_id;
 static std::unordered_map<size_t, std::string> global_registered_device_type;
 
