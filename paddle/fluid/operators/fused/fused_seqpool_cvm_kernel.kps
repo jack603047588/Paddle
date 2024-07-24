@@ -2025,7 +2025,7 @@ __global__ void seq_sum_pooling_cvm_bwd(unsigned long long* dy_addr,
             int buffer_in = 0;
             for (int64_t i = start; i < end; i += 1) {
                 mfence();
-                if (!use_cvm && embed_thres_size > 0 && embedx_concate_size == 1) {
+                if (!use_cvm && embed_thres_size > 0 && embedx_concate_size == 1 || cvm_offset == 0) {
                     memset_zero(local_y_grad, cvm_offset);
                 } else {
                     GM2LM_ASYNC(cvm + i * cvm_offset, local_y_grad, cvm_offset * sizeof(T));
