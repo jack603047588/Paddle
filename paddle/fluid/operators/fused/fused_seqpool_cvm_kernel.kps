@@ -143,8 +143,8 @@ struct pooling_engine<T, true, true, false, true, T2>{
             } 
             
             for (int cvm_i = cvm_offset + 1; cvm_i < cvm_offset + embed_thres_size_; cvm_i++) { 
-                embedx_weight_score += 
-                    pow(fabs(local_x[cvm_i]), 2); 
+                embedx_weight_score += local_x[cvm_i] * local_x[cvm_i];
+                    // pow(fabs(local_x[cvm_i]), 2); 
             } 
             embedx_weight_score = sqrt(embedx_weight_score) + fabs(embedw); 
             if (embedx_weight_score < embed_threshold) { 
@@ -227,13 +227,13 @@ struct pooling_engine_with_large_dim<T, true, true, false, true, T2>{
             auto embedx_weight_score = 0.0; 
             
             int embed_thres_size_ = embed_thres_size; 
-                        if (embed_thres_size == 0) { 
+            if (embed_thres_size == 0) { 
                 embed_thres_size_ = dim - cvm_offset; 
             } 
             
             for (int cvm_i = cvm_offset + 1; cvm_i < cvm_offset + embed_thres_size_; cvm_i++) { 
-                embedx_weight_score += 
-                    pow(fabs(local_x[cvm_i]), 2); 
+                embedx_weight_score += local_x[cvm_i] * local_x[cvm_i];
+                    // pow(fabs(local_x[cvm_i]), 2); 
             } 
             embedx_weight_score = sqrt(embedx_weight_score) + fabs(embedw); 
             if (embedx_weight_score < embed_threshold) { 
@@ -831,8 +831,8 @@ struct sum_pooling_concate<T, true, true, true> {
         auto &embedw = local_x[cvm_offset]; 
         auto embedx_weight_score = 0.0; 
         for (int cvm_i = cvm_offset + 1; cvm_i < in_dim_size; cvm_i++) { 
-            embedx_weight_score += 
-                pow(fabs(local_x[cvm_i]), 2); 
+            embedx_weight_score += local_x[cvm_i] * local_x[cvm_i];
+                // pow(fabs(local_x[cvm_i]), 2); 
         } 
         embedx_weight_score = sqrt(embedx_weight_score) + fabs(embedw); 
         if (embedx_weight_score < embed_threshold) { 
