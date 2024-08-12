@@ -224,22 +224,6 @@ struct pooling_engine_with_large_dim<T, true, true, false, true, T2>{
             if ((show - click) * show_coeff + click * clk_coeff < threshold) {
                 continue;
             }
-            auto &embedw = local_x[cvm_offset];
-            auto embedx_weight_score = 0.0;
-
-            int embed_thres_size_ = embed_thres_size;
-                        if (embed_thres_size == 0) {
-                embed_thres_size_ = dim - cvm_offset;
-            }
-
-            for (int cvm_i = cvm_offset + 1; cvm_i < cvm_offset + embed_thres_size_; cvm_i++) {
-                embedx_weight_score +=
-                    pow(fabs(local_x[cvm_i]), 2);
-            }
-            embedx_weight_score = sqrt(embedx_weight_score) + fabs(embedw);
-            if (embedx_weight_score < embed_threshold) {
-                continue;
-            }
 
             auto &embedw = local_x[cvm_offset]; 
             auto embedx_weight_score = 0.0; 
