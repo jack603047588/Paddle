@@ -798,7 +798,7 @@ struct sum_pooling_concate {
 // add for bscvrq
 // embedx_concate_filter:true && quant_ratio_valid=false && need_filter=false && embed_threshold_filter=false
 template <typename T>
-struct sum_pooling_concate<T, false, true, false, false> {
+struct sum_pooling_concate<T, false, false, false> {
     static __device__ inline bool filter(T* local_x, 
                                     int in_dim_size,
                                     float show_coeff,
@@ -818,7 +818,7 @@ struct sum_pooling_concate<T, false, true, false, false> {
 // add for bscvrq
 // embedx_concate_filter:true && quant_ratio_valid=false && need_filter=true && embed_threshold_filter=false
 template <typename T>
-struct sum_pooling_concate<T, false, true, true, false> {
+struct sum_pooling_concate<T, false, true, false> {
     static __device__ inline bool filter(T* local_x, 
                                     int in_dim_size,
                                     float show_coeff,
@@ -838,7 +838,7 @@ struct sum_pooling_concate<T, false, true, true, false> {
 // add for bscvrq
 // embedx_concate_filter:true && quant_ratio_valid=false && need_filter=true && embed_threshold_filter=true
 template <typename T>
-struct sum_pooling_concate<T, false, true, true, true> {
+struct sum_pooling_concate<T, false, true, true> {
     static __device__ inline bool filter(T* local_x, 
                                     int in_dim_size,
                                     float show_coeff,
@@ -861,6 +861,7 @@ struct sum_pooling_concate<T, false, true, true, true> {
         embedx_weight_score = sqrt(embedx_weight_score) + fabs(embedw); 
         if (embedx_weight_score < embed_threshold) { 
             return true;
+        } 
         } 
         return false;
     }
@@ -1152,7 +1153,7 @@ struct do_sum_pooling_and_cvm_with_large_dim<T, use_cvm, clk_filter, need_filter
                 mfence();
                 GM2LM(cur_x + (i + j) * in_dim_size, local_x, in_dim_size * sizeof(T));
                 
-                bool is_filter = sum_pooling_concate<T, false, true, need_filter, embed_threshold_filter>::filter(
+                bool is_filter = sum_pooling_concate<T, false, need_filter, embed_threshold_filter>::filter(
                     local_x, in_dim_size, show_coeff, clk_coeff, threshold, cvm_offset, embed_threshold);
                 if (is_filter) { 
                     continue; 
