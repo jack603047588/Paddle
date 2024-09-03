@@ -87,7 +87,7 @@ class PADDLE_API Place {
   struct Hash {
     // Note: Now the number of bits we need does not exceed 32 bits, so there is
     // no need to use 64 bits. If needed in the future, it can be expanded,
-    // but now we don’t over-design.
+    // but now we don鈥檛 over-design.
     uint32_t operator()(const Place& place) const;
   };
 
@@ -217,6 +217,8 @@ class CustomPlace : public Place {
 };
 
 std::ostream& operator<<(std::ostream&, const Place&);
+
+Place GetPinnedPlace(const Place& place);
 
 }  // namespace phi
 
