@@ -1410,35 +1410,19 @@ _XPU_DEF__SUM_POOLING_CVM_FWD_(float, true, true, true, true, true, true, double
 if (use_cvm) {                                                                                      \
     if (clk_filter) {                                                                               \
         if (need_filter) {                                                                          \
-            if (quant_ratio_valid) {                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, true, true, true, true, true, T2>;      \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, true, true, true, true, false, T2>;     \
-                    }                                                                               \
-                } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, true, true, true, false, true, T2>;     \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, true, true, true, false, false, T2>;    \
-                    }                                                                               \
-                }                                                                                   \
-            } else {                                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, true, true, false, true, true, T2>;     \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, true, true, false, true, false, T2>;    \
-                    }                                                                               \
-                } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, true, true, false, false, true, T2>;    \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, true, true, false, false, false, T2>;   \
-                    }                                                                               \
-                }                                                                                   \
-            }                                                                                       \
+            if (embed_threshold_filter) {                                                       \
+                if (embedx_concate_filter) {                                                    \
+                    func_kernel = kernel<T, true, true, true, true, true, true, T2>;      \
+                } else {                                                                        \
+                    func_kernel = kernel<T, true, true, true, true, true, false, T2>;     \
+                }                                                                               \
+            } else {                                                                            \
+                if (embedx_concate_filter) {                                                    \
+                    func_kernel = kernel<T, true, true, true, true, false, true, T2>;     \
+                } else {                                                                        \
+                    func_kernel = kernel<T, true, true, true, true, false, false, T2>;    \
+                }                                                                               \
+            }                                                                                   \
         } else {                                                                                    \
             if (quant_ratio_valid) {                                                                \
                 if (embed_threshold_filter) {                                                       \
@@ -1472,35 +1456,20 @@ if (use_cvm) {                                                                  
         }                                                                                           \
     } else {                                                                                        \
         if (need_filter) {                                                                          \
-            if (quant_ratio_valid) {                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, false, true, true, true, true, T2>;     \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, false, true, true, true, false, T2>;    \
-                    }                                                                               \
+            if (embed_threshold_filter) {                                                           \
+                if (embedx_concate_filter) {                                                        \
+                    func_kernel = kernel<T, true, false, true, true, true, true, T2>;     \
                 } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, false, true, true, false, true, T2>;    \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, false, true, true, false, false, T2>;   \
-                    }                                                                               \
+                    func_kernel = kernel<T, true, false, true, true, true, false, T2>;    \
                 }                                                                                   \
             } else {                                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, false, true, false, true, true, T2>;    \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, false, true, false, true, false, T2>;   \
-                    }                                                                               \
+                if (embedx_concate_filter) {                                                        \
+                    func_kernel = kernel<T, true, false, true, true, false, true, T2>;    \
                 } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, true, false, true, false, false, true, T2>;   \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, true, false, true, false, false, false, T2>;  \
-                    }                                                                               \
+                    func_kernel = kernel<T, true, false, true, true, false, false, T2>;   \
                 }                                                                                   \
             }                                                                                       \
+                                                                                                    \
         } else {                                                                                    \
             if (quant_ratio_valid) {                                                                \
                 if (embed_threshold_filter) {                                                       \
@@ -1536,33 +1505,17 @@ if (use_cvm) {                                                                  
 } else {                                                                                            \
     if (clk_filter) {                                                                               \
         if (need_filter) {                                                                          \
-            if (quant_ratio_valid) {                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, true, true, true, true, true, T2>;     \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, true, true, true, true, false, T2>;    \
-                    }                                                                               \
+            if (embed_threshold_filter) {                                                           \
+                if (embedx_concate_filter) {                                                        \
+                    func_kernel = kernel<T, false, true, true, true, true, true, T2>;     \
                 } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, true, true, true, false, true, T2>;    \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, true, true, true, false, false, T2>;   \
-                    }                                                                               \
+                    func_kernel = kernel<T, false, true, true, true, true, false, T2>;    \
                 }                                                                                   \
             } else {                                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, true, true, false, true, true, T2>;    \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, true, true, false, true, false, T2>;   \
-                    }                                                                               \
+                if (embedx_concate_filter) {                                                        \
+                    func_kernel = kernel<T, false, true, true, true, false, true, T2>;    \
                 } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, true, true, false, false, true, T2>;   \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, true, true, false, false, false, T2>;  \
-                    }                                                                               \
+                    func_kernel = kernel<T, false, true, true, true, false, false, T2>;   \
                 }                                                                                   \
             }                                                                                       \
         } else {                                                                                    \
@@ -1598,33 +1551,17 @@ if (use_cvm) {                                                                  
         }                                                                                           \
     } else {                                                                                        \
         if (need_filter) {                                                                          \
-            if (quant_ratio_valid) {                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, false, true, true, true, true, T2>;    \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, false, true, true, true, false, T2>;   \
-                    }                                                                               \
+            if (embed_threshold_filter) {                                                           \
+                if (embedx_concate_filter) {                                                        \
+                    func_kernel = kernel<T, false, false, true, true, true, true, T2>;    \
                 } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, false, true, true, false, true, T2>;   \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, false, true, true, false, false, T2>;  \
-                    }                                                                               \
+                    func_kernel = kernel<T, false, false, true, true, true, false, T2>;   \
                 }                                                                                   \
             } else {                                                                                \
-                if (embed_threshold_filter) {                                                       \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, false, true, false, true, true, T2>;   \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, false, true, false, true, false, T2>;  \
-                    }                                                                               \
+                if (embedx_concate_filter) {                                                        \
+                    func_kernel = kernel<T, false, false, true, true, false, true, T2>;   \
                 } else {                                                                            \
-                    if (embedx_concate_filter) {                                                    \
-                        func_kernel = kernel<T, false, false, true, false, false, true, T2>;  \
-                    } else {                                                                        \
-                        func_kernel = kernel<T, false, false, true, false, false, false, T2>; \
-                    }                                                                               \
+                    func_kernel = kernel<T, false, false, true, true, false, false, T2>;  \
                 }                                                                                   \
             }                                                                                       \
         } else {                                                                                    \
