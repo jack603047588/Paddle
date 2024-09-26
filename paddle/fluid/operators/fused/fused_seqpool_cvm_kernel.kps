@@ -3243,7 +3243,9 @@ __global__ void seq_sum_pooling_cvm_with_conv_bwd(unsigned long long* dy_addr,
             __global_ptr__ T* cur_DY = reinterpret_cast<__global_ptr__ T*>(DY_list[k]);
             for (int64_t i = thread_id; i < batch_size; i += nthreads) {
                 mfence();
-                GM2LM_ASYNC(cvm + i * cvm_offset, local_y_grad, cvm_offset * sizeof(T));
+                if (cvm_offset > 0) {
+                    GM2LM_ASYNC(cvm + i * cvm_offset, local_y_grad, cvm_offset * sizeof(T));
+                }
                 if (embedx_concate_size == 1) {
                     GM2LM_ASYNC(cur_DY + i * dim_size + dy_offset, local_y_grad + cvm_offset, (item_width - cvm_offset) * sizeof(T));
                 }
