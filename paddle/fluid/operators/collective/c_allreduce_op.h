@@ -298,7 +298,8 @@ class CAllReduceOpXPUKernel : public framework::OpKernel<T> {
 #if defined(PADDLE_WITH_XPU_BKCL)
     auto in = ctx.Input<framework::Tensor>("X");
     auto out = ctx.Output<framework::Tensor>("Out");
-
+    int rid = ctx.Attr<int>("ring_id");
+    
     auto place = ctx.GetPlace();
     BKCLDataType dtype =
         platform::ToBKCLDataType(framework::TransToProtoVarType(in->dtype()));
@@ -307,7 +308,43 @@ class CAllReduceOpXPUKernel : public framework::OpKernel<T> {
     out->Resize(in->dims());
     void* recvbuff = out->mutable_data<T>(place);
 
-    int rid = ctx.Attr<int>("ring_id");
+    auto map = distributed::ProcessGroupMapFromGid::getInstance();
+    if (map->has(rid)) {
+      // Use ProcessGroup
+      distributed::ProcessGroup* pg = map->get(rid);
+      std::vector<phi::DenseTensor> in_tensor;
+      std::vector<phi::DenseTensor> out_tensor;
+      in_tensor.push_back(*in);
+      out_tensor.push_back(*out);
+
+      distributed::AllreduceOptions opts;
+      switch (red_type) {
+        case kRedSum:
+          opts.reduce_op = distributed::ReduceOp::SUM;
+          break;
+
+        case kRedMax:
+          opts.reduce_op = distributed::ReduceOp::MAX;
+          break;
+
+        case kRedMin:
+          opts.reduce_op = distributed::ReduceOp::MIN;
+          break;
+
+        case kRedProd:
+          opts.reduce_op = distributed::ReduceOp::PRODUCT;
+          break;
+
+        default:
+          PADDLE_THROW(platform::errors::InvalidArgument(
+              "Invalid reduce type: %d", red_type));
+      }
+
+      auto task = pg->AllReduce(in_tensor, out_tensor, opts);
+      task->Wait();
+      return;
+    }
+
     auto comm = platform::BKCLCommContext::Instance().Get(rid, place);
 
     XPUStream stream = nullptr;

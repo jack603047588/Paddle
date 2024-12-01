@@ -26,6 +26,7 @@ limitations under the License. */
 #include "paddle/fluid/platform/collective_helper.h"
 #include "paddle/fluid/platform/device/xpu/bkcl_helper.h"
 #endif
+#include "paddle/fluid/distributed/collective/ProcessGroup.h"
 
 namespace paddle {
 namespace operators {
@@ -44,6 +45,18 @@ class CBroadcastOpXPUKernel : public framework::OpKernel<T> {
     int ring_id = ctx.Attr<int>("ring_id");
     auto place = ctx.GetPlace();
     int root = ctx.Attr<int>("root");
+    auto map = distributed::ProcessGroupMapFromGid::getInstance();
+    if (map->has(ring_id)) {
+      // Use ProcessGroup
+      distributed::ProcessGroup* pg = map->get(ring_id);
+      std::vector<phi::DenseTensor> in_tensor;
+      std::vector<phi::DenseTensor> out_tensor;
+      in_tensor.push_back(*x);
+      out_tensor.push_back(*out);
+      auto task = pg->Broadcast(in_tensor, out_tensor);
+      task->Wait();
+      return;
+    }
     
     auto comm = paddle::platform::BKCLCommContext::Instance().Get(ring_id, place);
     auto stream = comm->stream();
